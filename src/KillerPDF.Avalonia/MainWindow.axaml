@@ -159,6 +159,7 @@
                 <Button Classes="toolbar" Click="MoveUp_Click" Content="↑" ToolTip.Tip="Move page up"/>
                 <Button Classes="toolbar" Click="MoveDown_Click" Content="↓" ToolTip.Tip="Move page down"/>
                 <Button Classes="toolbar danger" Click="DeletePage_Click" Content="✕" ToolTip.Tip="Delete current page"/>
+                <Button Classes="toolbar" Click="ExtractPage_Click" Content="✂" ToolTip.Tip="Extract current page to a new file"/>
 
                 <Border Classes="tbsep"/>
 
@@ -168,7 +169,7 @@
                 <ToggleButton Classes="toolbar" Content="▓" ToolTip.Tip="Highlight" x:Name="ToolHighlightBtn" Click="ToolHighlight_Click"/>
                 <ToggleButton Classes="toolbar" Content="✎" ToolTip.Tip="Draw (freehand pen)" x:Name="ToolDrawBtn" Click="ToolDraw_Click"/>
                 <Button Classes="toolbar" Click="InsertImage_Click" Content="🖼" ToolTip.Tip="Insert image"/>
-                <Button Classes="toolbar" Content="✍" ToolTip.Tip="Signature (TODO)" IsEnabled="False"/>
+                <Button Classes="toolbar" Click="InsertSignature_Click" Content="✍" ToolTip.Tip="Insert signature (import image)"/>
                 <Button Classes="toolbar" Content="⌖" ToolTip.Tip="Crop (TODO)" IsEnabled="False"/>
 
                 <Border Classes="tbsep"/>

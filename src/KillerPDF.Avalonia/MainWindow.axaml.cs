@@ -586,6 +586,8 @@ public partial class MainWindow : Window
             ta.FontSize * 1.4),
         ImageAnnotation iaa => new RectD(iaa.Position.X, iaa.Position.Y,
             iaa.SourceWidth * iaa.Scale, iaa.SourceHeight * iaa.Scale),
+        SignatureAnnotation sa => new RectD(sa.Position.X, sa.Position.Y,
+            sa.SourceWidth * sa.Scale, sa.SourceHeight * sa.Scale),
         _ => new RectD(0, 0, 0, 0)
     };
 
@@ -920,11 +922,17 @@ public partial class MainWindow : Window
 
     // ── Image tool ────────────────────────────────────────────────────
     private async void InsertImage_Click(object? sender, RoutedEventArgs e)
+        => await InsertImageOrSignature(asSignature: false);
+
+    private async void InsertSignature_Click(object? sender, RoutedEventArgs e)
+        => await InsertImageOrSignature(asSignature: true);
+
+    private async System.Threading.Tasks.Task InsertImageOrSignature(bool asSignature)
     {
         if (_doc is null) { StatusText.Text = "Open a PDF first."; return; }
         var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
         {
-            Title = "Insert Image",
+            Title = asSignature ? "Import Signature Image" : "Insert Image",
             AllowMultiple = false,
             FileTypeFilter = new[]
             {
@@ -940,7 +948,6 @@ public partial class MainWindow : Window
         try
         {
             var bytes = System.IO.File.ReadAllBytes(path);
-            // Measure source dims by decoding once into an Avalonia bitmap
             double srcW = 400, srcH = 300;
             using (var ms = new System.IO.MemoryStream(bytes))
             {
@@ -950,31 +957,87 @@ public partial class MainWindow : Window
                     srcW = bmp.PixelSize.Width;
                     srcH = bmp.PixelSize.Height;
                 }
-                catch { /* fall back to defaults if Bitmap can't decode */ }
+                catch { }
             }
             const double MaxCanvasDim = 250;
             double scale = System.Math.Min(1.0, System.Math.Min(MaxCanvasDim / srcW, MaxCanvasDim / srcH));
-
-            // Center-ish on the current canvas
             double cx = (AnnotationCanvas.Width - srcW * scale) / 2;
             double cy = (AnnotationCanvas.Height - srcH * scale) / 2;
 
-            var ia = new ImageAnnotation
-            {
-                PageIndex = _currentPageIndex,
-                Position = new PointD(cx, cy),
-                Scale = scale,
-                SourceWidth = srcW,
-                SourceHeight = srcH,
-                ImageData = Convert.ToBase64String(bytes)
-            };
-            AddAnnotation(ia, "Inserted image");
+            PlacedAnnotation annot = asSignature
+                ? new SignatureAnnotation
+                {
+                    PageIndex = _currentPageIndex,
+                    Position = new PointD(cx, cy),
+                    Scale = scale,
+                    SourceWidth = srcW,
+                    SourceHeight = srcH,
+                    ImageData = Convert.ToBase64String(bytes)
+                }
+                : new ImageAnnotation
+                {
+                    PageIndex = _currentPageIndex,
+                    Position = new PointD(cx, cy),
+                    Scale = scale,
+                    SourceWidth = srcW,
+                    SourceHeight = srcH,
+                    ImageData = Convert.ToBase64String(bytes)
+                };
+            AddAnnotation(annot, asSignature ? "Inserted signature" : "Inserted image");
             RenderAllAnnotations(_currentPageIndex);
         }
         catch (Exception ex)
         {
-            StatusText.Text = $"Insert image failed: {ex.Message}";
+            StatusText.Text = $"Insert failed: {ex.Message}";
         }
+    }
+
+    // ── Extract current page ──────────────────────────────────────────
+    private async void ExtractPage_Click(object? sender, RoutedEventArgs e)
+    {
+        if (_doc is null || _workingPath is null) { StatusText.Text = "Open a PDF first."; return; }
+        var suggested = (_originalPath is not null
+            ? System.IO.Path.GetFileNameWithoutExtension(_originalPath)
+            : "document") + $"-page{_currentPageIndex + 1}";
+        var file = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            Title = "Extract current page",
+            SuggestedFileName = suggested,
+            DefaultExtension = "pdf",
+            FileTypeChoices = new[] { new FilePickerFileType("PDF documents") { Patterns = new[] { "*.pdf" } } }
+        });
+        if (file is null) return;
+        var target = file.TryGetLocalPath();
+        if (target is null) return;
+        try
+        {
+            PdfDocumentService.ExtractPages(_workingPath, new[] { _currentPageIndex }, target);
+            StatusText.Text = $"Extracted page {_currentPageIndex + 1} to {System.IO.Path.GetFileName(target)}";
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = $"Extract failed: {ex.Message}";
+        }
+    }
+
+    private void RenderImageBitmap(string base64, PointD position, double srcW, double srcH, double scale)
+    {
+        try
+        {
+            var bytes = Convert.FromBase64String(base64);
+            using var ms = new System.IO.MemoryStream(bytes);
+            var img = new Image
+            {
+                Source = new Bitmap(ms),
+                Width = srcW * scale,
+                Height = srcH * scale,
+                IsHitTestVisible = false
+            };
+            Canvas.SetLeft(img, position.X);
+            Canvas.SetTop(img, position.Y);
+            AnnotationCanvas.Children.Add(img);
+        }
+        catch { /* skip broken image */ }
     }
 
     // ── Annotation rendering ──────────────────────────────────────────
@@ -1027,22 +1090,11 @@ public partial class MainWindow : Window
                     break;
 
                 case ImageAnnotation iaa:
-                    try
-                    {
-                        var bytes = Convert.FromBase64String(iaa.ImageData);
-                        using var ms = new System.IO.MemoryStream(bytes);
-                        var img = new Image
-                        {
-                            Source = new Bitmap(ms),
-                            Width = iaa.SourceWidth * iaa.Scale,
-                            Height = iaa.SourceHeight * iaa.Scale,
-                            IsHitTestVisible = false
-                        };
-                        Canvas.SetLeft(img, iaa.Position.X);
-                        Canvas.SetTop(img, iaa.Position.Y);
-                        AnnotationCanvas.Children.Add(img);
-                    }
-                    catch { /* skip broken image */ }
+                    RenderImageBitmap(iaa.ImageData, iaa.Position, iaa.SourceWidth, iaa.SourceHeight, iaa.Scale);
+                    break;
+
+                case SignatureAnnotation sa when sa.ImageData is not null:
+                    RenderImageBitmap(sa.ImageData, sa.Position, sa.SourceWidth, sa.SourceHeight, sa.Scale);
                     break;
             }
         }
