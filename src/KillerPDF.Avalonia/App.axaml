@@ -1,0 +1,22 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="KillerPDF.App"
+             RequestedThemeVariant="Dark">
+
+    <Application.Styles>
+        <FluentTheme />
+    </Application.Styles>
+
+    <Application.Resources>
+        <!-- Killer Tools dark/green palette -->
+        <SolidColorBrush x:Key="BgDark" Color="#333333"/>
+        <SolidColorBrush x:Key="BgPanel" Color="#3a3a3a"/>
+        <SolidColorBrush x:Key="BgHover" Color="#404040"/>
+        <SolidColorBrush x:Key="BorderDim" Color="#2e2e2e"/>
+        <SolidColorBrush x:Key="AccentGreen" Color="#1ea54c"/>
+        <SolidColorBrush x:Key="AccentGreenDim" Color="#0d2a18"/>
+        <SolidColorBrush x:Key="TextPrimary" Color="#e0e0e0"/>
+        <SolidColorBrush x:Key="TextSecondary" Color="#888888"/>
+        <SolidColorBrush x:Key="DangerRed" Color="#ef4444"/>
+    </Application.Resources>
+</Application>

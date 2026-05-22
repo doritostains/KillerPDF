@@ -9,6 +9,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{A7B6CF53-D49
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "KillerPDF.Core", "src\KillerPDF.Core\KillerPDF.Core.csproj", "{1EE4BD21-7905-4C50-8678-629C93B0FB1F}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "KillerPDF.Avalonia", "src\KillerPDF.Avalonia\KillerPDF.Avalonia.csproj", "{43747606-5D16-43BA-87FB-C5102F39461D}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -23,6 +25,10 @@ Global
 		{1EE4BD21-7905-4C50-8678-629C93B0FB1F}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{1EE4BD21-7905-4C50-8678-629C93B0FB1F}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{1EE4BD21-7905-4C50-8678-629C93B0FB1F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{43747606-5D16-43BA-87FB-C5102F39461D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{43747606-5D16-43BA-87FB-C5102F39461D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{43747606-5D16-43BA-87FB-C5102F39461D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{43747606-5D16-43BA-87FB-C5102F39461D}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -32,5 +38,6 @@ Global
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{1EE4BD21-7905-4C50-8678-629C93B0FB1F} = {A7B6CF53-D49B-4037-A56A-733F581BCC3A}
+		{43747606-5D16-43BA-87FB-C5102F39461D} = {A7B6CF53-D49B-4037-A56A-733F581BCC3A}
 	EndGlobalSection
 EndGlobal

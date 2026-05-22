@@ -1,0 +1,59 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="700"
+        x:Class="KillerPDF.MainWindow"
+        Title="KillerPDF (Avalonia preview)"
+        Width="1000" Height="700"
+        Background="{StaticResource BgDark}"
+        Foreground="{StaticResource TextPrimary}">
+
+    <Grid RowDefinitions="Auto,*,28">
+
+        <!-- Toolbar -->
+        <Border Grid.Row="0"
+                Background="{StaticResource BgPanel}"
+                BorderBrush="{StaticResource BorderDim}"
+                BorderThickness="0,0,0,1"
+                Padding="8,6">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <Button x:Name="OpenBtn"
+                        Content="Open PDF…"
+                        Background="{StaticResource AccentGreen}"
+                        Foreground="White"
+                        Padding="12,4"
+                        Click="OpenBtn_Click"/>
+                <TextBlock x:Name="FileLabel"
+                           Text="No file open"
+                           VerticalAlignment="Center"
+                           Foreground="{StaticResource TextSecondary}"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Preview area -->
+        <ScrollViewer Grid.Row="1"
+                      HorizontalScrollBarVisibility="Auto"
+                      VerticalScrollBarVisibility="Auto"
+                      Background="{StaticResource BgDark}">
+            <Image x:Name="PageImage"
+                   Stretch="None"
+                   HorizontalAlignment="Center"
+                   VerticalAlignment="Center"
+                   Margin="20"/>
+        </ScrollViewer>
+
+        <!-- Status bar -->
+        <Border Grid.Row="2"
+                Background="{StaticResource BgPanel}"
+                BorderBrush="{StaticResource BorderDim}"
+                BorderThickness="0,1,0,0"
+                Padding="8,2">
+            <TextBlock x:Name="StatusText"
+                       Text="Ready"
+                       VerticalAlignment="Center"
+                       Foreground="{StaticResource TextSecondary}"/>
+        </Border>
+
+    </Grid>
+</Window>
