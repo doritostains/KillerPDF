@@ -1,0 +1,27 @@
+name: Build
+
+on:
+  push:
+    branches:
+      - main
+      - cross-platform-refactor
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build solution (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET 9 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+      - name: Restore
+        run: dotnet restore KillerPDF.sln
+
+      - name: Build (Release)
+        run: dotnet build KillerPDF.sln -c Release --no-restore
