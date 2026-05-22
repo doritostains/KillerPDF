@@ -143,6 +143,10 @@ namespace KillerPDF
         // Dirty / unsaved-change tracking
         private bool _isDirty = false;
 
+        // ViewModel — Phase 5 scaffold. Not yet bound to XAML; existing code-behind
+        // continues to drive UI directly while properties migrate over progressively.
+        private readonly MainWindowViewModel _vm = new();
+
         // Whole-document search results (PDF-space rects per page)
         private readonly Dictionary<int, List<(double left, double bottom, double right, double top)>> _allSearchRects = [];
         private readonly List<int> _searchResultPages = [];
@@ -151,6 +155,7 @@ namespace KillerPDF
         public MainWindow()
         {
             InitializeComponent();
+            DataContext = _vm;
             var v = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
             if (v != null) VersionLabel.Text = $"v{v.Major}.{v.Minor}.{v.Build}";
             _annotationCanvas = (Canvas)FindName("AnnotationCanvas")!;
