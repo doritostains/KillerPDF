@@ -134,10 +134,10 @@
 
                 <Border Classes="tbsep"/>
 
-                <!-- Edit tools (all placeholders for now) -->
-                <Button Classes="toolbar" Content="↖" ToolTip.Tip="Select (TODO)" IsEnabled="False"/>
+                <!-- Edit tools -->
+                <ToggleButton Classes="toolbar" Content="↖" ToolTip.Tip="Select" x:Name="ToolSelectBtn" Click="ToolSelect_Click" IsChecked="True"/>
                 <Button Classes="toolbar" Content="T" ToolTip.Tip="Text (TODO)" IsEnabled="False"/>
-                <Button Classes="toolbar" Content="▓" ToolTip.Tip="Highlight (TODO)" IsEnabled="False"/>
+                <ToggleButton Classes="toolbar" Content="▓" ToolTip.Tip="Highlight" x:Name="ToolHighlightBtn" Click="ToolHighlight_Click"/>
                 <Button Classes="toolbar" Content="✎" ToolTip.Tip="Draw (TODO)" IsEnabled="False"/>
                 <Button Classes="toolbar" Content="✍" ToolTip.Tip="Signature (TODO)" IsEnabled="False"/>
                 <Button Classes="toolbar" Content="🖼" ToolTip.Tip="Image (TODO)" IsEnabled="False"/>
@@ -145,6 +145,7 @@
 
                 <Border Classes="tbsep"/>
 
+                <Button Classes="toolbar" Click="SaveFlattened_Click" Content="🔒" ToolTip.Tip="Save flattened (bake annotations into PDF)"/>
                 <Button Classes="toolbar" Content="↶" ToolTip.Tip="Undo (TODO)" IsEnabled="False"/>
 
                 <Border Classes="tbsep"/>
@@ -228,11 +229,16 @@
                                VerticalAlignment="Center"
                                Foreground="{StaticResource TextSecondary}"
                                FontSize="14"/>
-                    <Image x:Name="PageImage"
-                           Stretch="None"
-                           HorizontalAlignment="Center"
-                           VerticalAlignment="Center"
-                           Margin="20"/>
+                    <!-- Page + annotation overlay (Grid stacks them) -->
+                    <Grid Margin="20" HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <Image x:Name="PageImage"
+                               Stretch="None"/>
+                        <Canvas x:Name="AnnotationCanvas"
+                                Background="Transparent"
+                                PointerPressed="AnnotationCanvas_PointerPressed"
+                                PointerMoved="AnnotationCanvas_PointerMoved"
+                                PointerReleased="AnnotationCanvas_PointerReleased"/>
+                    </Grid>
                 </Panel>
             </ScrollViewer>
         </Grid>

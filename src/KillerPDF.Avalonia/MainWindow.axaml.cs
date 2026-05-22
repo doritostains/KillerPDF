@@ -1,6 +1,8 @@
 using Avalonia.Controls;
+using Avalonia.Controls.Shapes;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using Avalonia.Platform.Storage;
@@ -11,25 +13,31 @@ namespace KillerPDF;
 
 public partial class MainWindow : Window
 {
-    private string? _originalPath;     // path user opened
-    private string? _workingPath;      // temp-file working copy (mutable)
-    private PdfDocument? _doc;         // PdfSharp document for mutating ops
+    private string? _originalPath;
+    private string? _workingPath;
+    private PdfDocument? _doc;
     private int _pageCount;
     private int _currentPageIndex;
     private double _zoom = 1.0;
 
+    // ── Editing state ────────────────────────────────────────────────
+    private EditTool _currentTool = EditTool.Select;
+    private readonly Dictionary<int, List<PageAnnotation>> _annotations = new();
+    private readonly Dictionary<int, (int w, int h)> _renderDims = new();
+
+    private bool _isDrawing;
+    private Avalonia.Point _drawStart;
+    private Rectangle? _activePreview;
+
+    // Default highlight color (yellow with low opacity)
+    private static readonly ColorRgba HighlightColor = new(255, 255, 0, 80);
+
     public MainWindow()
     {
         InitializeComponent();
-
-        // Drag-and-drop file open
         AddHandler(DragDrop.DragOverEvent, OnDragOver);
         AddHandler(DragDrop.DropEvent, OnDrop);
-
-        // Keyboard shortcuts wired window-wide
         KeyDown += OnKeyDown;
-
-        // Mouse-wheel page navigation in the preview area
         PointerWheelChanged += OnPointerWheelChanged;
     }
 
@@ -62,63 +70,22 @@ public partial class MainWindow : Window
         bool ctrl = e.KeyModifiers.HasFlag(KeyModifiers.Control);
         bool shift = e.KeyModifiers.HasFlag(KeyModifiers.Shift);
 
-        // File ops
         if (ctrl && e.Key == Key.O) { OpenBtn_Click(null, new RoutedEventArgs()); e.Handled = true; return; }
         if (ctrl && shift && e.Key == Key.S) { SaveAsBtn_Click(null, new RoutedEventArgs()); e.Handled = true; return; }
         if (ctrl && !shift && e.Key == Key.S) { SaveBtn_Click(null, new RoutedEventArgs()); e.Handled = true; return; }
 
-        // Document-required shortcuts below this point
         if (_doc is null) return;
 
-        // Page navigation
-        if (e.Key == Key.PageDown || e.Key == Key.Right || e.Key == Key.Down)
-        {
-            GoToPage(_currentPageIndex + 1);
-            e.Handled = true;
-            return;
-        }
-        if (e.Key == Key.PageUp || e.Key == Key.Left || e.Key == Key.Up)
-        {
-            GoToPage(_currentPageIndex - 1);
-            e.Handled = true;
-            return;
-        }
-        if (e.Key == Key.Home)
-        {
-            GoToPage(0);
-            e.Handled = true;
-            return;
-        }
-        if (e.Key == Key.End)
-        {
-            GoToPage(_pageCount - 1);
-            e.Handled = true;
-            return;
-        }
+        if (e.Key == Key.PageDown || e.Key == Key.Right || e.Key == Key.Down) { GoToPage(_currentPageIndex + 1); e.Handled = true; return; }
+        if (e.Key == Key.PageUp || e.Key == Key.Left || e.Key == Key.Up) { GoToPage(_currentPageIndex - 1); e.Handled = true; return; }
+        if (e.Key == Key.Home) { GoToPage(0); e.Handled = true; return; }
+        if (e.Key == Key.End) { GoToPage(_pageCount - 1); e.Handled = true; return; }
 
-        // Zoom
-        if (ctrl && (e.Key == Key.OemPlus || e.Key == Key.Add))
-        {
-            ZoomIn_Click(null, new RoutedEventArgs());
-            e.Handled = true; return;
-        }
-        if (ctrl && (e.Key == Key.OemMinus || e.Key == Key.Subtract))
-        {
-            ZoomOut_Click(null, new RoutedEventArgs());
-            e.Handled = true; return;
-        }
-        if (ctrl && e.Key == Key.D0)
-        {
-            FitWidth_Click(null, new RoutedEventArgs());
-            e.Handled = true; return;
-        }
+        if (ctrl && (e.Key == Key.OemPlus || e.Key == Key.Add)) { ZoomIn_Click(null, new RoutedEventArgs()); e.Handled = true; return; }
+        if (ctrl && (e.Key == Key.OemMinus || e.Key == Key.Subtract)) { ZoomOut_Click(null, new RoutedEventArgs()); e.Handled = true; return; }
+        if (ctrl && e.Key == Key.D0) { FitWidth_Click(null, new RoutedEventArgs()); e.Handled = true; return; }
 
-        // Page ops
-        if (e.Key == Key.Delete)
-        {
-            DeletePage_Click(null, new RoutedEventArgs());
-            e.Handled = true; return;
-        }
+        if (e.Key == Key.Delete) { DeletePage_Click(null, new RoutedEventArgs()); e.Handled = true; return; }
 
         await System.Threading.Tasks.Task.CompletedTask;
     }
@@ -128,16 +95,12 @@ public partial class MainWindow : Window
         if (idx < 0 || idx >= _pageCount || idx == _currentPageIndex) return;
         _currentPageIndex = idx;
         PageList.SelectedIndex = idx;
-        // Selection change handler will trigger render — but if PageList already had idx
-        // selected (unlikely here), call render directly.
-        // RenderCurrentPage is called via PageList_SelectionChanged.
     }
 
-    // ── Mouse wheel page navigation ───────────────────────────────────
+    // ── Mouse wheel ──────────────────────────────────────────────────
     private void OnPointerWheelChanged(object? sender, PointerWheelEventArgs e)
     {
         if (_doc is null) return;
-        // Ctrl+wheel = zoom, plain wheel = page nav
         if (e.KeyModifiers.HasFlag(KeyModifiers.Control))
         {
             if (e.Delta.Y > 0) ZoomIn_Click(null, new RoutedEventArgs());
@@ -145,40 +108,23 @@ public partial class MainWindow : Window
             e.Handled = true;
             return;
         }
-        // Plain wheel navigates pages, but only when scroll viewer can't scroll further.
-        // For simplicity here: any wheel changes the page.
         if (e.Delta.Y > 0) GoToPage(_currentPageIndex - 1);
         else if (e.Delta.Y < 0) GoToPage(_currentPageIndex + 1);
         e.Handled = true;
     }
 
-    // ── Custom chrome ─────────────────────────────────────────────────
+    // ── Title bar chrome ──────────────────────────────────────────────
     private void TitleBar_PointerPressed(object? sender, PointerPressedEventArgs e)
     {
-        if (e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
-        {
-            // Double-click toggles maximize, single click drags.
-            if (e.ClickCount == 2)
-            {
-                WindowState = WindowState == WindowState.Maximized
-                    ? WindowState.Normal
-                    : WindowState.Maximized;
-            }
-            else
-            {
-                BeginMoveDrag(e);
-            }
-        }
+        if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed) return;
+        if (e.ClickCount == 2)
+            WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+        else
+            BeginMoveDrag(e);
     }
-
-    private void Minimize_Click(object? sender, RoutedEventArgs e) =>
-        WindowState = WindowState.Minimized;
-
+    private void Minimize_Click(object? sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
     private void Maximize_Click(object? sender, RoutedEventArgs e) =>
-        WindowState = WindowState == WindowState.Maximized
-            ? WindowState.Normal
-            : WindowState.Maximized;
-
+        WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
     private void Close_Click(object? sender, RoutedEventArgs e) => Close();
 
     // ── Open ──────────────────────────────────────────────────────────
@@ -188,20 +134,11 @@ public partial class MainWindow : Window
         {
             Title = "Open PDF",
             AllowMultiple = false,
-            FileTypeFilter = new[]
-            {
-                new FilePickerFileType("PDF documents") { Patterns = new[] { "*.pdf" } }
-            }
+            FileTypeFilter = new[] { new FilePickerFileType("PDF documents") { Patterns = new[] { "*.pdf" } } }
         });
-
         if (files.Count == 0) return;
         var path = files[0].TryGetLocalPath();
-        if (path is null)
-        {
-            StatusText.Text = "Could not resolve local path for selected file.";
-            return;
-        }
-
+        if (path is null) { StatusText.Text = "Could not resolve local path for selected file."; return; }
         OpenFile(path);
     }
 
@@ -209,16 +146,12 @@ public partial class MainWindow : Window
     {
         try
         {
-            // Copy to a temp working file so the original stays unlocked and we can
-            // safely modify pages via PdfSharp (which opens with a lock in Modify mode).
             var workingPath = System.IO.Path.Combine(
                 System.IO.Path.GetTempPath(),
                 $"killerpdf_{Guid.NewGuid():N}.pdf");
             System.IO.File.Copy(path, workingPath, overwrite: true);
 
-            // Close any previously-open document
             _doc?.Close();
-
             _doc = PdfReader.Open(workingPath, PdfDocumentOpenMode.Modify);
             _originalPath = path;
             _workingPath = workingPath;
@@ -229,11 +162,11 @@ public partial class MainWindow : Window
             StatusText.Text = $"Open error: {ex.Message}";
             return;
         }
-
+        _annotations.Clear();
+        _renderDims.Clear();
         _currentPageIndex = 0;
         FileNameLabel.Text = System.IO.Path.GetFileName(path);
         EmptyHint.IsVisible = false;
-
         RefreshPageList();
         RenderCurrentPage();
     }
@@ -251,26 +184,20 @@ public partial class MainWindow : Window
         }
     }
 
-    /// <summary>
-    /// Saves the in-memory PdfSharp document back to the working temp file so the next
-    /// PdfRenderer call (which reads from disk via Docnet) sees the mutated state.
-    /// </summary>
-    private void PersistWorkingCopy()
-    {
-        if (_doc is null || _workingPath is null) return;
-        _doc.Save(_workingPath);
-        // Re-open from disk because PdfSharp's in-memory state diverges from the saved
-        // file once we've saved. Cheaper than tracking dirty internals manually.
-        _doc.Close();
-        _doc = PdfReader.Open(_workingPath, PdfDocumentOpenMode.Modify);
-        _pageCount = _doc.PageCount;
-    }
-
     private void PageList_SelectionChanged(object? sender, SelectionChangedEventArgs e)
     {
         if (PageList.SelectedIndex < 0 || PageList.SelectedIndex == _currentPageIndex) return;
         _currentPageIndex = PageList.SelectedIndex;
         RenderCurrentPage();
+    }
+
+    private void PersistWorkingCopy()
+    {
+        if (_doc is null || _workingPath is null) return;
+        _doc.Save(_workingPath);
+        _doc.Close();
+        _doc = PdfReader.Open(_workingPath, PdfDocumentOpenMode.Modify);
+        _pageCount = _doc.PageCount;
     }
 
     private void RenderCurrentPage()
@@ -286,9 +213,16 @@ public partial class MainWindow : Window
                 return;
             }
 
+            // Annotation canvas dimensions are independent of bitmap dimensions: it tracks
+            // the unscaled canvas pixel size so annotation coordinates stay stable across
+            // zoom re-renders. This is the same approach used by the WPF MainWindow.
+            int dipW = (int)System.Math.Round(render.Width / System.Math.Max(1.0, _zoom));
+            int dipH = (int)System.Math.Round(render.Height / System.Math.Max(1.0, _zoom));
+            _renderDims[_currentPageIndex] = (dipW, dipH);
+
             var bitmap = new WriteableBitmap(
                 new Avalonia.PixelSize(render.Width, render.Height),
-                new Avalonia.Vector(96, 96),
+                new Avalonia.Vector(96 * System.Math.Max(1.0, _zoom), 96 * System.Math.Max(1.0, _zoom)),
                 PixelFormat.Bgra8888,
                 AlphaFormat.Unpremul);
             using (var fb = bitmap.Lock())
@@ -296,6 +230,10 @@ public partial class MainWindow : Window
                     render.BgraPixels, 0, fb.Address, render.BgraPixels.Length);
 
             PageImage.Source = bitmap;
+            AnnotationCanvas.Width = dipW;
+            AnnotationCanvas.Height = dipH;
+            RenderAllAnnotations(_currentPageIndex);
+
             var nameOnDisk = _originalPath is not null
                 ? System.IO.Path.GetFileName(_originalPath)
                 : "(untitled)";
@@ -309,7 +247,7 @@ public partial class MainWindow : Window
         }
     }
 
-    // ── Page operations ───────────────────────────────────────────────
+    // ── Page ops ──────────────────────────────────────────────────────
     private void InsertBlank_Click(object? sender, RoutedEventArgs e)
     {
         if (_doc is null) { StatusText.Text = "Open a PDF first."; return; }
@@ -323,10 +261,9 @@ public partial class MainWindow : Window
 
     private void RotateLeft_Click(object? sender, RoutedEventArgs e) => RotateBy(-90);
     private void RotateRight_Click(object? sender, RoutedEventArgs e) => RotateBy(90);
-
     private void RotateBy(int delta)
     {
-        if (_doc is null) { StatusText.Text = "Open a PDF first."; return; }
+        if (_doc is null) return;
         PdfDocumentService.RotatePages(_doc, new[] { _currentPageIndex }, delta);
         PersistWorkingCopy();
         RenderCurrentPage();
@@ -355,7 +292,7 @@ public partial class MainWindow : Window
 
     private void DeletePage_Click(object? sender, RoutedEventArgs e)
     {
-        if (_doc is null) { StatusText.Text = "Open a PDF first."; return; }
+        if (_doc is null) return;
         if (_pageCount <= 1) { StatusText.Text = "Cannot delete the last remaining page."; return; }
         PdfDocumentService.DeletePages(_doc, new[] { _currentPageIndex });
         PersistWorkingCopy();
@@ -368,11 +305,7 @@ public partial class MainWindow : Window
     // ── Save ──────────────────────────────────────────────────────────
     private void SaveBtn_Click(object? sender, RoutedEventArgs e)
     {
-        if (_doc is null || _originalPath is null)
-        {
-            StatusText.Text = "Open a PDF first.";
-            return;
-        }
+        if (_doc is null || _originalPath is null) { StatusText.Text = "Open a PDF first."; return; }
         try
         {
             _doc.Save(_originalPath);
@@ -384,6 +317,73 @@ public partial class MainWindow : Window
         }
     }
 
+    private async void SaveAsBtn_Click(object? sender, RoutedEventArgs e)
+    {
+        if (_doc is null) { StatusText.Text = "Open a PDF first."; return; }
+        var suggested = _originalPath is not null
+            ? System.IO.Path.GetFileNameWithoutExtension(_originalPath)
+            : "document";
+        var file = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            Title = "Save As",
+            SuggestedFileName = suggested,
+            DefaultExtension = "pdf",
+            FileTypeChoices = new[] { new FilePickerFileType("PDF documents") { Patterns = new[] { "*.pdf" } } }
+        });
+        if (file is null) return;
+        var target = file.TryGetLocalPath();
+        if (target is null) { StatusText.Text = "Could not resolve save target path."; return; }
+        try
+        {
+            _doc.Save(target);
+            StatusText.Text = $"Saved to {System.IO.Path.GetFileName(target)}";
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = $"Save failed: {ex.Message}";
+        }
+    }
+
+    private async void SaveFlattened_Click(object? sender, RoutedEventArgs e)
+    {
+        if (_doc is null) { StatusText.Text = "Open a PDF first."; return; }
+        var suggested = (_originalPath is not null
+            ? System.IO.Path.GetFileNameWithoutExtension(_originalPath)
+            : "document") + "-flattened";
+        var file = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            Title = "Save Flattened (bake annotations into PDF)",
+            SuggestedFileName = suggested,
+            DefaultExtension = "pdf",
+            FileTypeChoices = new[] { new FilePickerFileType("PDF documents") { Patterns = new[] { "*.pdf" } } }
+        });
+        if (file is null) return;
+        var target = file.TryGetLocalPath();
+        if (target is null) return;
+        try
+        {
+            // Flatten annotations onto the working PdfSharp doc, save to target, then
+            // reload the working copy from the pre-flatten state to keep further editing
+            // possible. Mirrors what the WPF build does.
+            var preFlatten = System.IO.Path.Combine(System.IO.Path.GetTempPath(),
+                $"killerpdf_preflatten_{Guid.NewGuid():N}.pdf");
+            _doc.Save(preFlatten);
+            PdfAnnotationFlattener.FlattenInto(_doc, _annotations, _renderDims);
+            _doc.Save(target);
+            _doc.Close();
+            // Restore from the pre-flatten snapshot
+            System.IO.File.Copy(preFlatten, _workingPath!, overwrite: true);
+            _doc = PdfReader.Open(_workingPath!, PdfDocumentOpenMode.Modify);
+            System.IO.File.Delete(preFlatten);
+            RenderCurrentPage();
+            StatusText.Text = $"Saved flattened copy to {System.IO.Path.GetFileName(target)}";
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = $"Save flattened failed: {ex.Message}";
+        }
+    }
+
     // ── Merge ─────────────────────────────────────────────────────────
     private async void MergeBtn_Click(object? sender, RoutedEventArgs e)
     {
@@ -392,10 +392,7 @@ public partial class MainWindow : Window
         {
             Title = "Merge PDFs into current document",
             AllowMultiple = true,
-            FileTypeFilter = new[]
-            {
-                new FilePickerFileType("PDF documents") { Patterns = new[] { "*.pdf" } }
-            }
+            FileTypeFilter = new[] { new FilePickerFileType("PDF documents") { Patterns = new[] { "*.pdf" } } }
         });
         if (files.Count == 0) return;
         try
@@ -419,60 +416,128 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void SaveAsBtn_Click(object? sender, RoutedEventArgs e)
-    {
-        if (_doc is null || _workingPath is null)
-        {
-            StatusText.Text = "Open a PDF first.";
-            return;
-        }
-        var suggested = _originalPath is not null
-            ? System.IO.Path.GetFileNameWithoutExtension(_originalPath)
-            : "document";
-        var file = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
-        {
-            Title = "Save As",
-            SuggestedFileName = suggested,
-            DefaultExtension = "pdf",
-            FileTypeChoices = new[]
-            {
-                new FilePickerFileType("PDF documents") { Patterns = new[] { "*.pdf" } }
-            }
-        });
-        if (file is null) return;
-        var target = file.TryGetLocalPath();
-        if (target is null)
-        {
-            StatusText.Text = "Could not resolve save target path.";
-            return;
-        }
-        try
-        {
-            _doc.Save(target);
-            StatusText.Text = $"Saved to {System.IO.Path.GetFileName(target)}";
-        }
-        catch (Exception ex)
-        {
-            StatusText.Text = $"Save failed: {ex.Message}";
-        }
-    }
-
     // ── Zoom ──────────────────────────────────────────────────────────
     private void ZoomIn_Click(object? sender, RoutedEventArgs e)
     {
         _zoom = System.Math.Min(4.0, _zoom * 1.25);
         RenderCurrentPage();
     }
-
     private void ZoomOut_Click(object? sender, RoutedEventArgs e)
     {
         _zoom = System.Math.Max(0.25, _zoom / 1.25);
         RenderCurrentPage();
     }
-
     private void FitWidth_Click(object? sender, RoutedEventArgs e)
     {
         _zoom = 1.0;
         RenderCurrentPage();
+    }
+
+    // ── Tool selection ────────────────────────────────────────────────
+    private void ToolSelect_Click(object? sender, RoutedEventArgs e) => SetTool(EditTool.Select);
+    private void ToolHighlight_Click(object? sender, RoutedEventArgs e) => SetTool(EditTool.Highlight);
+
+    private void SetTool(EditTool tool)
+    {
+        _currentTool = tool;
+        ToolSelectBtn.IsChecked = tool == EditTool.Select;
+        ToolHighlightBtn.IsChecked = tool == EditTool.Highlight;
+        StatusText.Text = $"Tool: {tool}";
+    }
+
+    // ── Annotation canvas pointer events ──────────────────────────────
+    private void AnnotationCanvas_PointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (_doc is null) return;
+        if (_currentTool != EditTool.Highlight) return;
+        if (!e.GetCurrentPoint(AnnotationCanvas).Properties.IsLeftButtonPressed) return;
+
+        _isDrawing = true;
+        _drawStart = e.GetPosition(AnnotationCanvas);
+        _activePreview = new Rectangle
+        {
+            Fill = new SolidColorBrush(Color.FromArgb(HighlightColor.A, HighlightColor.R, HighlightColor.G, HighlightColor.B)),
+            Width = 0,
+            Height = 0,
+            IsHitTestVisible = false
+        };
+        Canvas.SetLeft(_activePreview, _drawStart.X);
+        Canvas.SetTop(_activePreview, _drawStart.Y);
+        AnnotationCanvas.Children.Add(_activePreview);
+        e.Pointer.Capture(AnnotationCanvas);
+        e.Handled = true;
+    }
+
+    private void AnnotationCanvas_PointerMoved(object? sender, PointerEventArgs e)
+    {
+        if (!_isDrawing || _activePreview is null) return;
+        var pos = e.GetPosition(AnnotationCanvas);
+        double x = System.Math.Min(pos.X, _drawStart.X);
+        double y = System.Math.Min(pos.Y, _drawStart.Y);
+        Canvas.SetLeft(_activePreview, x);
+        Canvas.SetTop(_activePreview, y);
+        _activePreview.Width = System.Math.Abs(pos.X - _drawStart.X);
+        _activePreview.Height = System.Math.Abs(pos.Y - _drawStart.Y);
+    }
+
+    private void AnnotationCanvas_PointerReleased(object? sender, PointerReleasedEventArgs e)
+    {
+        if (!_isDrawing || _activePreview is null) return;
+        _isDrawing = false;
+        e.Pointer.Capture(null);
+
+        if (_activePreview.Width > 3 && _activePreview.Height > 3)
+        {
+            var rect = new RectD(
+                Canvas.GetLeft(_activePreview),
+                Canvas.GetTop(_activePreview),
+                _activePreview.Width,
+                _activePreview.Height);
+            var ha = new HighlightAnnotation
+            {
+                PageIndex = _currentPageIndex,
+                Bounds = rect,
+                ColorR = HighlightColor.R,
+                ColorG = HighlightColor.G,
+                ColorB = HighlightColor.B,
+                ColorA = HighlightColor.A
+            };
+            if (!_annotations.ContainsKey(_currentPageIndex))
+                _annotations[_currentPageIndex] = new List<PageAnnotation>();
+            _annotations[_currentPageIndex].Add(ha);
+            StatusText.Text = $"Added highlight on page {_currentPageIndex + 1}";
+        }
+        else
+        {
+            AnnotationCanvas.Children.Remove(_activePreview);
+        }
+        _activePreview = null;
+    }
+
+    // ── Annotation rendering ──────────────────────────────────────────
+    private void RenderAllAnnotations(int pageIndex)
+    {
+        AnnotationCanvas.Children.Clear();
+        if (!_annotations.TryGetValue(pageIndex, out var annots)) return;
+
+        foreach (var annot in annots)
+        {
+            switch (annot)
+            {
+                case HighlightAnnotation ha:
+                    var rect = new Rectangle
+                    {
+                        Fill = new SolidColorBrush(Color.FromArgb(ha.ColorA, ha.ColorR, ha.ColorG, ha.ColorB)),
+                        Width = ha.Bounds.Width,
+                        Height = ha.Bounds.Height,
+                        IsHitTestVisible = false
+                    };
+                    Canvas.SetLeft(rect, ha.Bounds.X);
+                    Canvas.SetTop(rect, ha.Bounds.Y);
+                    AnnotationCanvas.Children.Add(rect);
+                    break;
+                // Future: TextAnnotation, InkAnnotation, etc.
+            }
+        }
     }
 }
