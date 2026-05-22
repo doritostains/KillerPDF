@@ -15,6 +15,24 @@
     <FileVersion>1.4.1.0</FileVersion>
   </PropertyGroup>
 
+  <!-- Publish settings: single-file, self-contained, compressed, trimmed.
+       These are no-ops for plain `dotnet build`; they take effect on `dotnet publish`. -->
+  <PropertyGroup>
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>true</SelfContained>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <PublishTrimmed>true</PublishTrimmed>
+    <TrimMode>partial</TrimMode>
+    <DebugType>embedded</DebugType>
+  </PropertyGroup>
+
+  <!-- PdfSharpCore uses reflection for font discovery; root it so trimming doesn't
+       strip the font registry. -->
+  <ItemGroup>
+    <TrimmerRootAssembly Include="PdfSharpCore" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="Avalonia" Version="11.2.0" />
     <PackageReference Include="Avalonia.Desktop" Version="11.2.0" />

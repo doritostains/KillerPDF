@@ -1,5 +1,6 @@
 using System.IO;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace KillerPDF;
 
@@ -19,7 +20,8 @@ public static class SignatureStorage
             var path = Path.Combine(directory, FileName);
             if (!File.Exists(path)) return new List<SavedSignature>();
             var json = File.ReadAllText(path);
-            return JsonSerializer.Deserialize<List<SavedSignature>>(json) ?? new List<SavedSignature>();
+            return JsonSerializer.Deserialize(json, SignatureJsonContext.Default.ListSavedSignature)
+                   ?? new List<SavedSignature>();
         }
         catch
         {
@@ -33,7 +35,7 @@ public static class SignatureStorage
         {
             Directory.CreateDirectory(directory);
             var path = Path.Combine(directory, FileName);
-            var json = JsonSerializer.Serialize(signatures, new JsonSerializerOptions { WriteIndented = true });
+            var json = JsonSerializer.Serialize(signatures, SignatureJsonContext.Default.ListSavedSignature);
             File.WriteAllText(path, json);
         }
         catch
@@ -42,3 +44,10 @@ public static class SignatureStorage
         }
     }
 }
+
+/// <summary>
+/// Source-generated JSON serialization context so signature load/save is trim/AOT-safe.
+/// </summary>
+[JsonSerializable(typeof(List<SavedSignature>))]
+[JsonSourceGenerationOptions(WriteIndented = true)]
+internal partial class SignatureJsonContext : JsonSerializerContext { }
