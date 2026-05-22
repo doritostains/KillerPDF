@@ -3627,8 +3627,8 @@ namespace KillerPDF
                         {
                             PageIndex = pageIdx,
                             OriginalText = existingEdit.OriginalContent,
-                            CanvasBounds = reb,
-                            Position = existingEdit.Position,
+                            CanvasBounds = reb.ToWpf(),
+                            Position = existingEdit.Position.ToWpf(),
                             FontSize = existingEdit.FontSize,
                             FontName = existingEdit.FontName,
                             ExistingAnnotation = existingEdit
