@@ -12,7 +12,8 @@
         ExtendClientAreaChromeHints="NoChrome"
         ExtendClientAreaTitleBarHeightHint="-1"
         Background="{StaticResource BgDark}"
-        Foreground="{StaticResource TextPrimary}">
+        Foreground="{StaticResource TextPrimary}"
+        DragDrop.AllowDrop="True">
 
     <Window.Styles>
         <!-- Toolbar button: dark, hover-highlighted, no border -->

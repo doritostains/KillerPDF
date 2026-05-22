@@ -18,7 +18,138 @@ public partial class MainWindow : Window
     private int _currentPageIndex;
     private double _zoom = 1.0;
 
-    public MainWindow() => InitializeComponent();
+    public MainWindow()
+    {
+        InitializeComponent();
+
+        // Drag-and-drop file open
+        AddHandler(DragDrop.DragOverEvent, OnDragOver);
+        AddHandler(DragDrop.DropEvent, OnDrop);
+
+        // Keyboard shortcuts wired window-wide
+        KeyDown += OnKeyDown;
+
+        // Mouse-wheel page navigation in the preview area
+        PointerWheelChanged += OnPointerWheelChanged;
+    }
+
+    // ── Drag and drop ─────────────────────────────────────────────────
+    private void OnDragOver(object? sender, DragEventArgs e)
+    {
+        e.DragEffects = e.Data.Contains(DataFormats.Files) ? DragDropEffects.Copy : DragDropEffects.None;
+    }
+
+    private void OnDrop(object? sender, DragEventArgs e)
+    {
+        if (!e.Data.Contains(DataFormats.Files)) return;
+        var files = e.Data.GetFiles();
+        if (files is null) return;
+        foreach (var f in files)
+        {
+            var path = f.TryGetLocalPath();
+            if (path is not null && path.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
+            {
+                OpenFile(path);
+                return;
+            }
+        }
+        StatusText.Text = "Drop a PDF file to open.";
+    }
+
+    // ── Keyboard shortcuts ────────────────────────────────────────────
+    private async void OnKeyDown(object? sender, KeyEventArgs e)
+    {
+        bool ctrl = e.KeyModifiers.HasFlag(KeyModifiers.Control);
+        bool shift = e.KeyModifiers.HasFlag(KeyModifiers.Shift);
+
+        // File ops
+        if (ctrl && e.Key == Key.O) { OpenBtn_Click(null, new RoutedEventArgs()); e.Handled = true; return; }
+        if (ctrl && shift && e.Key == Key.S) { SaveAsBtn_Click(null, new RoutedEventArgs()); e.Handled = true; return; }
+
+        // Document-required shortcuts below this point
+        if (_doc is null) return;
+
+        // Page navigation
+        if (e.Key == Key.PageDown || e.Key == Key.Right || e.Key == Key.Down)
+        {
+            GoToPage(_currentPageIndex + 1);
+            e.Handled = true;
+            return;
+        }
+        if (e.Key == Key.PageUp || e.Key == Key.Left || e.Key == Key.Up)
+        {
+            GoToPage(_currentPageIndex - 1);
+            e.Handled = true;
+            return;
+        }
+        if (e.Key == Key.Home)
+        {
+            GoToPage(0);
+            e.Handled = true;
+            return;
+        }
+        if (e.Key == Key.End)
+        {
+            GoToPage(_pageCount - 1);
+            e.Handled = true;
+            return;
+        }
+
+        // Zoom
+        if (ctrl && (e.Key == Key.OemPlus || e.Key == Key.Add))
+        {
+            ZoomIn_Click(null, new RoutedEventArgs());
+            e.Handled = true; return;
+        }
+        if (ctrl && (e.Key == Key.OemMinus || e.Key == Key.Subtract))
+        {
+            ZoomOut_Click(null, new RoutedEventArgs());
+            e.Handled = true; return;
+        }
+        if (ctrl && e.Key == Key.D0)
+        {
+            FitWidth_Click(null, new RoutedEventArgs());
+            e.Handled = true; return;
+        }
+
+        // Page ops
+        if (e.Key == Key.Delete)
+        {
+            DeletePage_Click(null, new RoutedEventArgs());
+            e.Handled = true; return;
+        }
+
+        await System.Threading.Tasks.Task.CompletedTask;
+    }
+
+    private void GoToPage(int idx)
+    {
+        if (idx < 0 || idx >= _pageCount || idx == _currentPageIndex) return;
+        _currentPageIndex = idx;
+        PageList.SelectedIndex = idx;
+        // Selection change handler will trigger render — but if PageList already had idx
+        // selected (unlikely here), call render directly.
+        // RenderCurrentPage is called via PageList_SelectionChanged.
+    }
+
+    // ── Mouse wheel page navigation ───────────────────────────────────
+    private void OnPointerWheelChanged(object? sender, PointerWheelEventArgs e)
+    {
+        if (_doc is null) return;
+        // Ctrl+wheel = zoom, plain wheel = page nav
+        if (e.KeyModifiers.HasFlag(KeyModifiers.Control))
+        {
+            if (e.Delta.Y > 0) ZoomIn_Click(null, new RoutedEventArgs());
+            else if (e.Delta.Y < 0) ZoomOut_Click(null, new RoutedEventArgs());
+            e.Handled = true;
+            return;
+        }
+        // Plain wheel navigates pages, but only when scroll viewer can't scroll further.
+        // For simplicity here: any wheel changes the page.
+        if (e.Delta.Y > 0) GoToPage(_currentPageIndex - 1);
+        else if (e.Delta.Y < 0) GoToPage(_currentPageIndex + 1);
+        e.Handled = true;
+    }
 
     // ── Custom chrome ─────────────────────────────────────────────────
     private void TitleBar_PointerPressed(object? sender, PointerPressedEventArgs e)
