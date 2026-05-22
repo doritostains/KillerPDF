@@ -109,6 +109,34 @@
             </Grid>
         </Border>
 
+        <!-- ── Search bar (floats over toolbar when visible) ────────── -->
+        <Border Grid.Row="1"
+                x:Name="SearchBar"
+                IsVisible="False"
+                Background="{StaticResource BgPanel}"
+                BorderBrush="{StaticResource AccentGreen}"
+                BorderThickness="0,0,0,2"
+                Padding="12,6"
+                ZIndex="100">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <TextBlock Text="🔍"
+                           VerticalAlignment="Center"
+                           Foreground="{StaticResource TextSecondary}"/>
+                <TextBox x:Name="SearchBox"
+                         Width="240"
+                         Watermark="Find in document…"
+                         KeyDown="SearchBox_KeyDown"/>
+                <Button Classes="toolbar" Click="SearchPrev_Click" Content="↑" ToolTip.Tip="Previous match"/>
+                <Button Classes="toolbar" Click="SearchNext_Click" Content="↓" ToolTip.Tip="Next match"/>
+                <TextBlock x:Name="SearchStatus"
+                           Text=""
+                           VerticalAlignment="Center"
+                           Foreground="{StaticResource TextSecondary}"
+                           FontSize="11"/>
+                <Button Classes="toolbar" Click="SearchClose_Click" Content="✕" ToolTip.Tip="Close (Esc)"/>
+            </StackPanel>
+        </Border>
+
         <!-- ── Toolbar ──────────────────────────────────────────────── -->
         <Border Grid.Row="1"
                 Background="{StaticResource BgPanel}"
@@ -145,8 +173,9 @@
 
                 <Border Classes="tbsep"/>
 
+                <Button Classes="toolbar" Click="SearchOpen_Click" Content="🔍" ToolTip.Tip="Find in document (Ctrl+F)"/>
                 <Button Classes="toolbar" Click="SaveFlattened_Click" Content="🔒" ToolTip.Tip="Save flattened (bake annotations into PDF)"/>
-                <Button Classes="toolbar" Content="↶" ToolTip.Tip="Undo (TODO)" IsEnabled="False"/>
+                <Button Classes="toolbar" Click="Undo_Click" Content="↶" ToolTip.Tip="Undo last annotation (Ctrl+Z)"/>
 
                 <Border Classes="tbsep"/>
 

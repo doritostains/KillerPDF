@@ -46,6 +46,14 @@ public partial class MainWindow : Window
     private const double InkStrokeWidth = 2.0;
     private const double TextFontSize = 14.0;
 
+    // Search state
+    private IReadOnlyList<PdfSearchService.PageHits> _searchResults = Array.Empty<PdfSearchService.PageHits>();
+    private int _searchResultPageCursor = -1; // index into _searchResults
+    private readonly List<Rectangle> _searchHighlights = new();
+
+    // Simple linear undo stack of annotation removals (snapshots of _annotations per change)
+    private readonly Stack<Action> _undoStack = new();
+
     public MainWindow()
     {
         InitializeComponent();
@@ -87,6 +95,8 @@ public partial class MainWindow : Window
         if (ctrl && e.Key == Key.O) { OpenBtn_Click(null, new RoutedEventArgs()); e.Handled = true; return; }
         if (ctrl && shift && e.Key == Key.S) { SaveAsBtn_Click(null, new RoutedEventArgs()); e.Handled = true; return; }
         if (ctrl && !shift && e.Key == Key.S) { SaveBtn_Click(null, new RoutedEventArgs()); e.Handled = true; return; }
+        if (ctrl && e.Key == Key.F) { OpenSearchBar(); e.Handled = true; return; }
+        if (ctrl && e.Key == Key.Z) { Undo_Click(null, new RoutedEventArgs()); e.Handled = true; return; }
 
         if (_doc is null) return;
 
@@ -671,7 +681,173 @@ public partial class MainWindow : Window
         if (!_annotations.ContainsKey(_currentPageIndex))
             _annotations[_currentPageIndex] = new List<PageAnnotation>();
         _annotations[_currentPageIndex].Add(annot);
+        int page = _currentPageIndex;
+        _undoStack.Push(() =>
+        {
+            if (_annotations.TryGetValue(page, out var list))
+                list.Remove(annot);
+        });
         StatusText.Text = $"{statusVerb} on page {_currentPageIndex + 1}";
+    }
+
+    // ── Undo ──────────────────────────────────────────────────────────
+    private void Undo_Click(object? sender, RoutedEventArgs e)
+    {
+        if (_undoStack.Count == 0) { StatusText.Text = "Nothing to undo"; return; }
+        var action = _undoStack.Pop();
+        action();
+        ClearSelection();
+        RenderAllAnnotations(_currentPageIndex);
+        StatusText.Text = "Undid last edit";
+    }
+
+    // ── Search ────────────────────────────────────────────────────────
+    private void SearchOpen_Click(object? sender, RoutedEventArgs e) => OpenSearchBar();
+
+    private void OpenSearchBar()
+    {
+        SearchBar.IsVisible = true;
+        SearchBox.Focus();
+        SearchBox.SelectAll();
+    }
+
+    private void SearchClose_Click(object? sender, RoutedEventArgs e) => CloseSearchBar();
+
+    private void CloseSearchBar()
+    {
+        SearchBar.IsVisible = false;
+        ClearSearchHighlights();
+        _searchResults = Array.Empty<PdfSearchService.PageHits>();
+        _searchResultPageCursor = -1;
+        SearchStatus.Text = "";
+    }
+
+    private void SearchBox_KeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter)
+        {
+            if (e.KeyModifiers.HasFlag(KeyModifiers.Shift)) SearchPrev_Click(null, new RoutedEventArgs());
+            else RunSearch(SearchBox.Text ?? "");
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Escape)
+        {
+            CloseSearchBar();
+            e.Handled = true;
+        }
+    }
+
+    private void RunSearch(string query)
+    {
+        ClearSearchHighlights();
+        if (_workingPath is null || string.IsNullOrWhiteSpace(query))
+        {
+            _searchResults = Array.Empty<PdfSearchService.PageHits>();
+            SearchStatus.Text = "";
+            return;
+        }
+        try
+        {
+            _searchResults = PdfSearchService.SearchDocument(_workingPath, query);
+            int totalHits = _searchResults.Sum(ph => ph.Hits.Count);
+            if (totalHits == 0)
+            {
+                SearchStatus.Text = "No matches";
+                _searchResultPageCursor = -1;
+                return;
+            }
+            SearchStatus.Text = totalHits == 1
+                ? $"1 match on {_searchResults.Count} page"
+                : $"{totalHits} matches on {_searchResults.Count} page{(_searchResults.Count != 1 ? "s" : "")}";
+
+            // Jump to the first result at or after the current page.
+            int startIdx = _searchResults.ToList().FindIndex(ph => ph.PageIndex >= _currentPageIndex);
+            _searchResultPageCursor = startIdx >= 0 ? startIdx : 0;
+            JumpToCurrentSearchPage();
+        }
+        catch (Exception ex)
+        {
+            SearchStatus.Text = $"Search error: {ex.Message}";
+        }
+    }
+
+    private void SearchNext_Click(object? sender, RoutedEventArgs e)
+    {
+        if (_searchResults.Count == 0) return;
+        _searchResultPageCursor = (_searchResultPageCursor + 1) % _searchResults.Count;
+        JumpToCurrentSearchPage();
+    }
+
+    private void SearchPrev_Click(object? sender, RoutedEventArgs e)
+    {
+        if (_searchResults.Count == 0) return;
+        _searchResultPageCursor = (_searchResultPageCursor - 1 + _searchResults.Count) % _searchResults.Count;
+        JumpToCurrentSearchPage();
+    }
+
+    private void JumpToCurrentSearchPage()
+    {
+        if (_searchResultPageCursor < 0 || _searchResultPageCursor >= _searchResults.Count) return;
+        var ph = _searchResults[_searchResultPageCursor];
+        if (ph.PageIndex != _currentPageIndex)
+        {
+            GoToPage(ph.PageIndex);
+            // PageList SelectionChanged calls RenderCurrentPage; HighlightSearchHits has to be
+            // called after that, deferred to layout.
+            Avalonia.Threading.Dispatcher.UIThread.Post(HighlightSearchHits,
+                Avalonia.Threading.DispatcherPriority.Background);
+        }
+        else
+        {
+            HighlightSearchHits();
+        }
+    }
+
+    private void HighlightSearchHits()
+    {
+        ClearSearchHighlights();
+        if (_workingPath is null || !_renderDims.TryGetValue(_currentPageIndex, out var dims)) return;
+        var ph = _searchResults.FirstOrDefault(x => x.PageIndex == _currentPageIndex);
+        if (ph.Hits is null || ph.Hits.Count == 0) return;
+
+        // Scale PDF user-space → canvas. PdfPig coords are bottom-left origin.
+        try
+        {
+            using var pigDoc = UglyToad.PdfPig.PdfDocument.Open(_workingPath);
+            var page = pigDoc.GetPage(_currentPageIndex + 1);
+            double sx = dims.w / page.Width;
+            double sy = dims.h / page.Height;
+            foreach (var hit in ph.Hits)
+            {
+                double x = hit.Left * sx;
+                double y = (page.Height - hit.Top) * sy;
+                double w = (hit.Right - hit.Left) * sx;
+                double h = (hit.Top - hit.Bottom) * sy;
+                var rect = new Rectangle
+                {
+                    Fill = new SolidColorBrush(Color.FromArgb(80, 0x1e, 0xa5, 0x4c)),
+                    Stroke = new SolidColorBrush(Color.FromArgb(255, 0x1e, 0xa5, 0x4c)),
+                    StrokeThickness = 1,
+                    Width = w,
+                    Height = h,
+                    IsHitTestVisible = false
+                };
+                Canvas.SetLeft(rect, x);
+                Canvas.SetTop(rect, y);
+                AnnotationCanvas.Children.Add(rect);
+                _searchHighlights.Add(rect);
+            }
+        }
+        catch
+        {
+            // best-effort highlight; no status spam
+        }
+    }
+
+    private void ClearSearchHighlights()
+    {
+        foreach (var r in _searchHighlights) AnnotationCanvas.Children.Remove(r);
+        _searchHighlights.Clear();
     }
 
     // ── Text tool ─────────────────────────────────────────────────────
