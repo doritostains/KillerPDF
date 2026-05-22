@@ -65,6 +65,7 @@ public partial class MainWindow : Window
         // File ops
         if (ctrl && e.Key == Key.O) { OpenBtn_Click(null, new RoutedEventArgs()); e.Handled = true; return; }
         if (ctrl && shift && e.Key == Key.S) { SaveAsBtn_Click(null, new RoutedEventArgs()); e.Handled = true; return; }
+        if (ctrl && !shift && e.Key == Key.S) { SaveBtn_Click(null, new RoutedEventArgs()); e.Handled = true; return; }
 
         // Document-required shortcuts below this point
         if (_doc is null) return;
@@ -367,7 +368,55 @@ public partial class MainWindow : Window
     // ── Save ──────────────────────────────────────────────────────────
     private void SaveBtn_Click(object? sender, RoutedEventArgs e)
     {
-        StatusText.Text = "Save in place: not yet implemented (no editing tools yet)";
+        if (_doc is null || _originalPath is null)
+        {
+            StatusText.Text = "Open a PDF first.";
+            return;
+        }
+        try
+        {
+            _doc.Save(_originalPath);
+            StatusText.Text = $"Saved to {System.IO.Path.GetFileName(_originalPath)}";
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = $"Save failed: {ex.Message}";
+        }
+    }
+
+    // ── Merge ─────────────────────────────────────────────────────────
+    private async void MergeBtn_Click(object? sender, RoutedEventArgs e)
+    {
+        if (_doc is null) { StatusText.Text = "Open a PDF first."; return; }
+        var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "Merge PDFs into current document",
+            AllowMultiple = true,
+            FileTypeFilter = new[]
+            {
+                new FilePickerFileType("PDF documents") { Patterns = new[] { "*.pdf" } }
+            }
+        });
+        if (files.Count == 0) return;
+        try
+        {
+            int merged = 0;
+            foreach (var f in files)
+            {
+                var path = f.TryGetLocalPath();
+                if (path is null) continue;
+                PdfDocumentService.AppendDocument(_doc, path);
+                merged++;
+            }
+            PersistWorkingCopy();
+            RefreshPageList();
+            RenderCurrentPage();
+            StatusText.Text = $"Merged {merged} file(s) — {_pageCount} total pages";
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = $"Merge failed: {ex.Message}";
+        }
     }
 
     private async void SaveAsBtn_Click(object? sender, RoutedEventArgs e)

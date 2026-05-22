@@ -118,8 +118,9 @@
             <StackPanel Orientation="Horizontal" Spacing="2">
                 <!-- File ops -->
                 <Button Classes="toolbar" Click="OpenBtn_Click" Content="📂" ToolTip.Tip="Open (Ctrl+O)"/>
-                <Button Classes="toolbar accent" Click="SaveBtn_Click" Content="💾" ToolTip.Tip="Save (Ctrl+S)" x:Name="SaveBtn"/>
-                <Button Classes="toolbar" Click="SaveAsBtn_Click" Content="⤓" ToolTip.Tip="Save As…" x:Name="SaveAsBtn"/>
+                <Button Classes="toolbar accent" Click="SaveBtn_Click" Content="💾" ToolTip.Tip="Save in place (Ctrl+S)" x:Name="SaveBtn"/>
+                <Button Classes="toolbar" Click="SaveAsBtn_Click" Content="⤓" ToolTip.Tip="Save As… (Ctrl+Shift+S)" x:Name="SaveAsBtn"/>
+                <Button Classes="toolbar" Click="MergeBtn_Click" Content="🔗" ToolTip.Tip="Merge other PDFs into this one"/>
 
                 <Border Classes="tbsep"/>
 
