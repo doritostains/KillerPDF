@@ -657,19 +657,16 @@ namespace KillerPDF
                     2048 * Math.Max(dpiScaleX, dpiScaleY) * Math.Max(1.0, _zoomLevel));
                 _lastRenderZoom = _zoomLevel;
 
-                using var docReader = DocLib.Instance.GetDocReader(_currentFile, new PageDimensions(scaledMax, scaledMax));
-                using var pageReader = docReader.GetPageReader(pageIndex);
-
-                int width = pageReader.GetPageWidth();
-                int height = pageReader.GetPageHeight();
-                var rawBytes = pageReader.GetImage();
-
-                if (width <= 0 || height <= 0 || rawBytes == null || rawBytes.Length == 0)
+                var render = PdfRenderer.RenderPage(_currentFile, pageIndex, scaledMax);
+                if (!render.IsValid)
                 {
                     PageImage.Source = null;
                     SetStatus($"Page {pageIndex + 1} - could not render");
                     return;
                 }
+                int width = render.Width;
+                int height = render.Height;
+                var rawBytes = render.BgraPixels;
 
                 // Convert pixel dimensions to WPF DIPs so the annotation canvas and
                 // link overlays are sized in the same coordinate space that WPF uses for
@@ -3300,20 +3297,14 @@ namespace KillerPDF
 
             try
             {
-                string lowerQuery = query.ToLowerInvariant();
+                var pageHits = PdfSearchService.SearchDocument(_currentFile, query);
                 int totalHits = 0;
-
-                using var pigDoc = PdfPigDoc.Open(_currentFile);
-                for (int pi = 0; pi < pigDoc.NumberOfPages; pi++)
+                foreach (var ph in pageHits)
                 {
-                    var page = pigDoc.GetPage(pi + 1);
-                    var hits = FindMatchesOnPage(page, lowerQuery);
-                    if (hits.Count > 0)
-                    {
-                        _allSearchRects[pi] = hits;
-                        _searchResultPages.Add(pi);
-                        totalHits += hits.Count;
-                    }
+                    var hits = ph.Hits.Select(h => (h.Left, h.Bottom, h.Right, h.Top)).ToList();
+                    _allSearchRects[ph.PageIndex] = hits;
+                    _searchResultPages.Add(ph.PageIndex);
+                    totalHits += hits.Count;
                 }
 
                 if (_searchResultPages.Count == 0)
@@ -3342,46 +3333,6 @@ namespace KillerPDF
             {
                 if (_searchStatus != null) _searchStatus.Text = "Search error";
             }
-        }
-
-        private static List<(double left, double bottom, double right, double top)> FindMatchesOnPage(
-            UglyToad.PdfPig.Content.Page page, string lowerQuery)
-        {
-            var result = new List<(double left, double bottom, double right, double top)>();
-            var words = page.GetWords().ToList();
-
-            for (int i = 0; i < words.Count; i++)
-            {
-                if (words[i].Text.ToLowerInvariant().Contains(lowerQuery))
-                {
-                    var bb = words[i].BoundingBox;
-                    result.Add((bb.Left, bb.Bottom, bb.Right, bb.Top));
-                    continue;
-                }
-
-                // Multi-word match
-                string combined = words[i].Text;
-                for (int j = i + 1; j < words.Count && combined.Length < lowerQuery.Length + 20; j++)
-                {
-                    combined += " " + words[j].Text;
-                    if (combined.ToLowerInvariant().Contains(lowerQuery))
-                    {
-                        double minX = double.MaxValue, minY = double.MaxValue;
-                        double maxX = double.MinValue, maxY = double.MinValue;
-                        for (int k = i; k <= j; k++)
-                        {
-                            var wbb = words[k].BoundingBox;
-                            minX = Math.Min(minX, wbb.Left);
-                            minY = Math.Min(minY, wbb.Bottom);
-                            maxX = Math.Max(maxX, wbb.Right);
-                            maxY = Math.Max(maxY, wbb.Top);
-                        }
-                        result.Add((minX, minY, maxX, maxY));
-                        break;
-                    }
-                }
-            }
-            return result;
         }
 
         private void HighlightSearchResultsOnCurrentPage()
