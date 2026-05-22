@@ -123,7 +123,6 @@ namespace KillerPDF
         private SavedSignature? _pendingSignature;
         private Border? _signaturePopup;
         private static readonly string SignatureDir = AppDomain.CurrentDomain.BaseDirectory;
-        private static readonly string SignatureFile = System.IO.Path.Combine(SignatureDir, "signatures.json");
 
         // Manual element refs (XAML codegen doesn't resolve these)
         private readonly Canvas _annotationCanvas = null!;
@@ -1777,29 +1776,8 @@ namespace KillerPDF
         // Signatures
         // ============================================================
 
-        private void LoadSignatures()
-        {
-            try
-            {
-                if (File.Exists(SignatureFile))
-                {
-                    var json = File.ReadAllText(SignatureFile);
-                    _savedSignatures = JsonSerializer.Deserialize<List<SavedSignature>>(json) ?? [];
-                }
-            }
-            catch { _savedSignatures = []; }
-        }
-
-        private void PersistSignatures()
-        {
-            try
-            {
-                Directory.CreateDirectory(SignatureDir);
-                var json = JsonSerializer.Serialize(_savedSignatures, new JsonSerializerOptions { WriteIndented = true });
-                File.WriteAllText(SignatureFile, json);
-            }
-            catch { /* best effort */ }
-        }
+        private void LoadSignatures() => _savedSignatures = SignatureStorage.Load(SignatureDir);
+        private void PersistSignatures() => SignatureStorage.Save(SignatureDir, _savedSignatures);
 
         private void ShowSignaturePopup()
         {
