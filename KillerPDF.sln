@@ -3,7 +3,11 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.14.37027.9 d17.14
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "KillerPDF", "KillerPDF.csproj", "{D7AFAEB6-1B7F-41FB-86C5-A5B17169D42F}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "KillerPDF.Wpf", "src\KillerPDF.Wpf\KillerPDF.Wpf.csproj", "{D7AFAEB6-1B7F-41FB-86C5-A5B17169D42F}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{A7B6CF53-D49B-4037-A56A-733F581BCC3A}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "KillerPDF.Core", "src\KillerPDF.Core\KillerPDF.Core.csproj", "{1EE4BD21-7905-4C50-8678-629C93B0FB1F}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -15,11 +19,18 @@ Global
 		{D7AFAEB6-1B7F-41FB-86C5-A5B17169D42F}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{D7AFAEB6-1B7F-41FB-86C5-A5B17169D42F}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{D7AFAEB6-1B7F-41FB-86C5-A5B17169D42F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1EE4BD21-7905-4C50-8678-629C93B0FB1F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1EE4BD21-7905-4C50-8678-629C93B0FB1F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1EE4BD21-7905-4C50-8678-629C93B0FB1F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1EE4BD21-7905-4C50-8678-629C93B0FB1F}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {45DCC74D-BB06-4D90-8EEE-8FDE7B8AB84E}
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{1EE4BD21-7905-4C50-8678-629C93B0FB1F} = {A7B6CF53-D49B-4037-A56A-733F581BCC3A}
 	EndGlobalSection
 EndGlobal

@@ -44,12 +44,21 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\KillerPDF.Core\KillerPDF.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Resource Include="Resources\kp-icon.ico" />
   </ItemGroup>
 
+  <!-- Repo-root-relative path to the shared build/ scripts. -->
+  <PropertyGroup>
+    <RepoRootDir>$(MSBuildThisFileDirectory)..\..\</RepoRootDir>
+  </PropertyGroup>
+
   <!-- GPL3 source bundle: produces <AppName>-<Version>-src.zip in the publish folder every time you Publish. -->
   <Target Name="BundleSource" AfterTargets="Publish">
-    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(ProjectDir)build\bundle-source.ps1&quot; -ProjectDir &quot;$(ProjectDir.TrimEnd('\'))&quot; -Version &quot;$(Version)&quot; -AppName &quot;$(AssemblyName)&quot; -PublishDir &quot;$(PublishDir.TrimEnd('\'))&quot;" IgnoreExitCode="true" />
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(RepoRootDir)build\bundle-source.ps1&quot; -ProjectDir &quot;$(RepoRootDir.TrimEnd('\'))&quot; -Version &quot;$(Version)&quot; -AppName &quot;$(AssemblyName)&quot; -PublishDir &quot;$(PublishDir.TrimEnd('\'))&quot;" IgnoreExitCode="true" />
   </Target>
 
 </Project>

@@ -26,8 +26,8 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
-$proj      = Join-Path $PSScriptRoot "KillerPDF.csproj"
-$publishDir = Join-Path $PSScriptRoot "bin\Release\net48\publish"
+$proj      = Join-Path $PSScriptRoot "src\KillerPDF.Wpf\KillerPDF.Wpf.csproj"
+$publishDir = Join-Path $PSScriptRoot "src\KillerPDF.Wpf\bin\Release\net48\publish"
 $exe       = Join-Path $publishDir "KillerPDF.exe"
 
 # ── 1. Build / Publish ──────────────────────────────────────────────────────
