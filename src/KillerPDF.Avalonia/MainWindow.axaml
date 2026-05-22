@@ -169,7 +169,8 @@
                 <ToggleButton Classes="toolbar" Content="▓" ToolTip.Tip="Highlight" x:Name="ToolHighlightBtn" Click="ToolHighlight_Click"/>
                 <ToggleButton Classes="toolbar" Content="✎" ToolTip.Tip="Draw (freehand pen)" x:Name="ToolDrawBtn" Click="ToolDraw_Click"/>
                 <Button Classes="toolbar" Click="InsertImage_Click" Content="🖼" ToolTip.Tip="Insert image"/>
-                <Button Classes="toolbar" Click="InsertSignature_Click" Content="✍" ToolTip.Tip="Insert signature (import image)"/>
+                <Button Classes="toolbar" Click="DrawSignature_Click" Content="✍" ToolTip.Tip="Draw a signature"/>
+                <Button Classes="toolbar" Click="InsertSignature_Click" Content="✎🖼" ToolTip.Tip="Import signature from image file"/>
                 <ToggleButton Classes="toolbar" Content="⌖" ToolTip.Tip="Crop (drag a rectangle, then Apply)" x:Name="ToolCropBtn" Click="ToolCrop_Click"/>
 
                 <Border Classes="tbsep"/>

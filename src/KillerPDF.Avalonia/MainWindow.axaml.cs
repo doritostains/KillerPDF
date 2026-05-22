@@ -65,6 +65,10 @@ public partial class MainWindow : Window
     private Rectangle? _cropPreviewRect;
     private RectD _pendingCropCanvas;
 
+    // Pending drawn signature waiting for placement
+    private List<List<PointD>>? _pendingSigStrokes;
+    private double _pendingSigW, _pendingSigH;
+
     public MainWindow()
     {
         InitializeComponent();
@@ -524,6 +528,11 @@ public partial class MainWindow : Window
 
             case EditTool.Text:
                 PlaceTextBox(pos);
+                e.Handled = true;
+                break;
+
+            case EditTool.Signature when _pendingSigStrokes is not null:
+                PlacePendingSignature(pos);
                 e.Handled = true;
                 break;
 
@@ -1056,12 +1065,46 @@ public partial class MainWindow : Window
         }
     }
 
+    private void PlacePendingSignature(Avalonia.Point pos)
+    {
+        if (_pendingSigStrokes is null) return;
+        const double scale = 0.5;
+        var sa = new SignatureAnnotation
+        {
+            PageIndex = _currentPageIndex,
+            Position = new PointD(pos.X, pos.Y),
+            Scale = scale,
+            SourceWidth = _pendingSigW,
+            SourceHeight = _pendingSigH,
+            ImageData = null,  // drawn (not image-based)
+            Strokes = _pendingSigStrokes.Select(s => s.Select(p => new PointD(p.X, p.Y)).ToList()).ToList()
+        };
+        AddAnnotation(sa, "Placed signature");
+        _pendingSigStrokes = null;
+        SetTool(EditTool.Select);
+        RenderAllAnnotations(_currentPageIndex);
+    }
+
     // ── Image tool ────────────────────────────────────────────────────
     private async void InsertImage_Click(object? sender, RoutedEventArgs e)
         => await InsertImageOrSignature(asSignature: false);
 
     private async void InsertSignature_Click(object? sender, RoutedEventArgs e)
         => await InsertImageOrSignature(asSignature: true);
+
+    private async void DrawSignature_Click(object? sender, RoutedEventArgs e)
+    {
+        if (_doc is null) { StatusText.Text = "Open a PDF first."; return; }
+        var dlg = new SignatureCreatorWindow();
+        await dlg.ShowDialog(this);
+        if (dlg.Strokes is null || dlg.Strokes.Count == 0) return;
+
+        _pendingSigStrokes = dlg.Strokes;
+        _pendingSigW = dlg.CanvasWidth;
+        _pendingSigH = dlg.CanvasHeight;
+        SetTool(EditTool.Signature);
+        StatusText.Text = "Click on the page to place the signature";
+    }
 
     private async System.Threading.Tasks.Task InsertImageOrSignature(bool asSignature)
     {
@@ -1273,6 +1316,25 @@ public partial class MainWindow : Window
 
                 case SignatureAnnotation sa when sa.ImageData is not null:
                     RenderImageBitmap(sa.ImageData, sa.Position, sa.SourceWidth, sa.SourceHeight, sa.Scale);
+                    break;
+
+                case SignatureAnnotation sa when sa.Strokes.Count > 0:
+                    // Drawn signature: render each stroke as a polyline at scaled position
+                    foreach (var stroke in sa.Strokes)
+                    {
+                        if (stroke.Count < 2) continue;
+                        var sigPoly = new Polyline
+                        {
+                            Stroke = new SolidColorBrush(Colors.Black),
+                            StrokeThickness = 2 * sa.Scale,
+                            StrokeLineCap = PenLineCap.Round,
+                            StrokeJoin = PenLineJoin.Round,
+                            IsHitTestVisible = false
+                        };
+                        foreach (var p in stroke)
+                            sigPoly.Points.Add(new Avalonia.Point(sa.Position.X + p.X * sa.Scale, sa.Position.Y + p.Y * sa.Scale));
+                        AnnotationCanvas.Children.Add(sigPoly);
+                    }
                     break;
             }
         }

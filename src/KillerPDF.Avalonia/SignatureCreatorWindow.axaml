@@ -1,0 +1,76 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="KillerPDF.SignatureCreatorWindow"
+        Title="Draw Signature"
+        Width="480" Height="280"
+        SystemDecorations="None"
+        ExtendClientAreaToDecorationsHint="True"
+        Background="{StaticResource BgDark}"
+        Foreground="{StaticResource TextPrimary}"
+        CanResize="False"
+        WindowStartupLocation="CenterOwner">
+
+    <Grid RowDefinitions="32,*,Auto">
+        <!-- Title bar -->
+        <Border Grid.Row="0"
+                Background="{StaticResource BgPanel}"
+                BorderBrush="{StaticResource BorderDim}"
+                BorderThickness="0,0,0,1"
+                PointerPressed="TitleBar_PointerPressed">
+            <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Grid.Column="0"
+                           Text="Draw your signature"
+                           VerticalAlignment="Center"
+                           Margin="12,0,0,0"
+                           FontSize="13"
+                           Foreground="{StaticResource TextPrimary}"/>
+                <Button Grid.Column="1"
+                        Click="Cancel_Click"
+                        Content="✕"
+                        Background="Transparent"
+                        Foreground="{StaticResource TextPrimary}"
+                        BorderThickness="0"
+                        Width="40" Height="32"
+                        CornerRadius="0"/>
+            </Grid>
+        </Border>
+
+        <!-- Draw area -->
+        <Border Grid.Row="1"
+                Background="White"
+                Margin="20"
+                BorderBrush="{StaticResource BorderDim}"
+                BorderThickness="1">
+            <Canvas x:Name="DrawCanvas"
+                    Background="White"
+                    PointerPressed="DrawCanvas_PointerPressed"
+                    PointerMoved="DrawCanvas_PointerMoved"
+                    PointerReleased="DrawCanvas_PointerReleased"/>
+        </Border>
+
+        <!-- Actions -->
+        <Border Grid.Row="2"
+                Background="{StaticResource BgPanel}"
+                BorderBrush="{StaticResource BorderDim}"
+                BorderThickness="0,1,0,0"
+                Padding="12,8">
+            <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+                <Button Click="Clear_Click"
+                        Content="Clear"
+                        Background="Transparent"
+                        Foreground="{StaticResource TextSecondary}"
+                        Padding="12,4"/>
+                <Button Click="Cancel_Click"
+                        Content="Cancel"
+                        Background="Transparent"
+                        Foreground="{StaticResource TextPrimary}"
+                        Padding="12,4"/>
+                <Button Click="Save_Click"
+                        Content="Use signature"
+                        Background="{StaticResource AccentGreen}"
+                        Foreground="White"
+                        Padding="12,4"/>
+            </StackPanel>
+        </Border>
+    </Grid>
+</Window>
