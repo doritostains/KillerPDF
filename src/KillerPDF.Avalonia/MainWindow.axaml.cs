@@ -296,6 +296,7 @@ public partial class MainWindow : Window
     private void InsertBlank_Click(object? sender, RoutedEventArgs e)
     {
         if (_doc is null) { StatusText.Text = "Open a PDF first."; return; }
+        PushDocSnapshot();
         int insertedAt = PdfDocumentService.InsertBlankPage(_doc, _currentPageIndex);
         PersistWorkingCopy();
         _currentPageIndex = insertedAt;
@@ -309,6 +310,7 @@ public partial class MainWindow : Window
     private void RotateBy(int delta)
     {
         if (_doc is null) return;
+        PushDocSnapshot();
         PdfDocumentService.RotatePages(_doc, new[] { _currentPageIndex }, delta);
         PersistWorkingCopy();
         RenderCurrentPage();
@@ -318,6 +320,7 @@ public partial class MainWindow : Window
     private void MoveUp_Click(object? sender, RoutedEventArgs e)
     {
         if (_doc is null || _currentPageIndex <= 0) return;
+        PushDocSnapshot();
         PdfDocumentService.MovePage(_doc, _currentPageIndex, _currentPageIndex - 1);
         PersistWorkingCopy();
         _currentPageIndex -= 1;
@@ -328,6 +331,7 @@ public partial class MainWindow : Window
     private void MoveDown_Click(object? sender, RoutedEventArgs e)
     {
         if (_doc is null || _currentPageIndex >= _pageCount - 1) return;
+        PushDocSnapshot();
         PdfDocumentService.MovePage(_doc, _currentPageIndex, _currentPageIndex + 1);
         PersistWorkingCopy();
         _currentPageIndex += 1;
@@ -339,6 +343,7 @@ public partial class MainWindow : Window
     {
         if (_doc is null) return;
         if (_pageCount <= 1) { StatusText.Text = "Cannot delete the last remaining page."; return; }
+        PushDocSnapshot();
         PdfDocumentService.DeletePages(_doc, new[] { _currentPageIndex });
         PersistWorkingCopy();
         if (_currentPageIndex >= _pageCount) _currentPageIndex = _pageCount - 1;
@@ -442,6 +447,7 @@ public partial class MainWindow : Window
         if (files.Count == 0) return;
         try
         {
+            PushDocSnapshot();
             int merged = 0;
             foreach (var f in files)
             {
@@ -844,8 +850,40 @@ public partial class MainWindow : Window
         var action = _undoStack.Pop();
         action();
         ClearSelection();
-        RenderAllAnnotations(_currentPageIndex);
         StatusText.Text = "Undid last edit";
+    }
+
+    /// <summary>
+    /// Captures the current document as a byte[] snapshot and pushes a restore action
+    /// onto the undo stack. Call BEFORE any page-level mutation so the user can rewind.
+    /// </summary>
+    private void PushDocSnapshot()
+    {
+        if (_doc is null || _workingPath is null) return;
+        using var ms = new System.IO.MemoryStream();
+        _doc.Save(ms);
+        var bytes = ms.ToArray();
+        int beforePageIdx = _currentPageIndex;
+        _undoStack.Push(() =>
+        {
+            try
+            {
+                if (_workingPath is null) return;
+                System.IO.File.WriteAllBytes(_workingPath, bytes);
+                _doc?.Close();
+                _doc = PdfReader.Open(_workingPath, PdfDocumentOpenMode.Modify);
+                _pageCount = _doc.PageCount;
+                _annotations.Clear();   // simple approach: annotations on undo'd page state are dropped
+                _renderDims.Clear();
+                _currentPageIndex = System.Math.Min(beforePageIdx, _pageCount - 1);
+                RefreshPageList();
+                RenderCurrentPage();
+            }
+            catch (Exception ex)
+            {
+                StatusText.Text = $"Undo failed: {ex.Message}";
+            }
+        });
     }
 
     // ── Search ────────────────────────────────────────────────────────
@@ -1191,8 +1229,8 @@ public partial class MainWindow : Window
         }
         try
         {
+            PushDocSnapshot();
             var page = _doc.Pages[_currentPageIndex];
-            // Canvas → PDF user-space conversion. PDF origin is bottom-left.
             double sx = page.Width.Point / dims.w;
             double sy = page.Height.Point / dims.h;
             double pdfLeft = page.MediaBox.X1 + _pendingCropCanvas.X * sx;
