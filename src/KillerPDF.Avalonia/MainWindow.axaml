@@ -4,55 +4,254 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="700"
         x:Class="KillerPDF.MainWindow"
-        Title="KillerPDF (Avalonia preview)"
+        Title="KillerPDF"
         Width="1000" Height="700"
+        MinWidth="600" MinHeight="400"
+        SystemDecorations="None"
+        ExtendClientAreaToDecorationsHint="True"
+        ExtendClientAreaChromeHints="NoChrome"
+        ExtendClientAreaTitleBarHeightHint="-1"
         Background="{StaticResource BgDark}"
         Foreground="{StaticResource TextPrimary}">
 
-    <Grid RowDefinitions="Auto,*,28">
+    <Window.Styles>
+        <!-- Toolbar button: dark, hover-highlighted, no border -->
+        <Style Selector="Button.toolbar">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="10,6"/>
+            <Setter Property="Width" Value="36"/>
+            <Setter Property="Height" Value="32"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="CornerRadius" Value="3"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+        <Style Selector="Button.toolbar:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{StaticResource BgHover}"/>
+        </Style>
+        <Style Selector="Button.toolbar.accent">
+            <Setter Property="Foreground" Value="{StaticResource AccentGreen}"/>
+        </Style>
+        <Style Selector="Button.toolbar.danger">
+            <Setter Property="Foreground" Value="{StaticResource DangerRed}"/>
+        </Style>
+        <!-- Chrome buttons (min/max/close) -->
+        <Style Selector="Button.chrome">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Width" Value="46"/>
+            <Setter Property="Height" Value="36"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="CornerRadius" Value="0"/>
+            <Setter Property="FontSize" Value="12"/>
+        </Style>
+        <Style Selector="Button.chrome:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{StaticResource BgHover}"/>
+        </Style>
+        <Style Selector="Button.chrome.close:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{StaticResource DangerRed}"/>
+        </Style>
+        <!-- Toolbar separator -->
+        <Style Selector="Border.tbsep">
+            <Setter Property="Width" Value="1"/>
+            <Setter Property="Margin" Value="6,4"/>
+            <Setter Property="Background" Value="{StaticResource BorderDim}"/>
+        </Style>
+    </Window.Styles>
 
-        <!-- Toolbar -->
+    <Grid RowDefinitions="36,Auto,*,28">
+
+        <!-- ── Title bar ────────────────────────────────────────────── -->
         <Border Grid.Row="0"
+                x:Name="TitleBar"
                 Background="{StaticResource BgPanel}"
                 BorderBrush="{StaticResource BorderDim}"
                 BorderThickness="0,0,0,1"
-                Padding="8,6">
-            <StackPanel Orientation="Horizontal" Spacing="8">
-                <Button x:Name="OpenBtn"
-                        Content="Open PDF…"
-                        Background="{StaticResource AccentGreen}"
-                        Foreground="White"
-                        Padding="12,4"
-                        Click="OpenBtn_Click"/>
-                <TextBlock x:Name="FileLabel"
-                           Text="No file open"
+                PointerPressed="TitleBar_PointerPressed">
+            <Grid ColumnDefinitions="Auto,*,Auto">
+                <StackPanel Grid.Column="0"
+                            Orientation="Horizontal"
+                            VerticalAlignment="Center"
+                            Margin="12,0,0,0"
+                            Spacing="0">
+                    <TextBlock Text="Killer"
+                               FontSize="14"
+                               FontWeight="SemiBold"
+                               Foreground="{StaticResource TextPrimary}"
+                               VerticalAlignment="Center"/>
+                    <TextBlock Text="PDF"
+                               FontSize="14"
+                               FontWeight="SemiBold"
+                               Foreground="{StaticResource AccentGreen}"
+                               VerticalAlignment="Center"/>
+                    <TextBlock x:Name="FileNameLabel"
+                               Text=""
+                               FontSize="12"
+                               Foreground="{StaticResource TextSecondary}"
+                               VerticalAlignment="Center"
+                               Margin="16,0,0,0"/>
+                </StackPanel>
+
+                <StackPanel Grid.Column="2"
+                            Orientation="Horizontal"
+                            VerticalAlignment="Top"
+                            Spacing="0">
+                    <Button Classes="chrome" Click="Minimize_Click" Content="—" ToolTip.Tip="Minimize"/>
+                    <Button Classes="chrome" Click="Maximize_Click" Content="☐" ToolTip.Tip="Maximize"/>
+                    <Button Classes="chrome close" Click="Close_Click" Content="✕" ToolTip.Tip="Close"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- ── Toolbar ──────────────────────────────────────────────── -->
+        <Border Grid.Row="1"
+                Background="{StaticResource BgPanel}"
+                BorderBrush="{StaticResource BorderDim}"
+                BorderThickness="0,0,0,1"
+                Padding="8,4">
+            <StackPanel Orientation="Horizontal" Spacing="2">
+                <!-- File ops -->
+                <Button Classes="toolbar" Click="OpenBtn_Click" Content="📂" ToolTip.Tip="Open (Ctrl+O)"/>
+                <Button Classes="toolbar accent" Click="SaveBtn_Click" Content="💾" ToolTip.Tip="Save (Ctrl+S)" x:Name="SaveBtn"/>
+                <Button Classes="toolbar" Click="SaveAsBtn_Click" Content="⤓" ToolTip.Tip="Save As…" x:Name="SaveAsBtn"/>
+
+                <Border Classes="tbsep"/>
+
+                <!-- Page ops -->
+                <Button Classes="toolbar" Content="＋" ToolTip.Tip="Merge (TODO)" IsEnabled="False"/>
+                <Button Classes="toolbar" Content="✂" ToolTip.Tip="Split (TODO)" IsEnabled="False"/>
+                <Button Classes="toolbar danger" Content="✕" ToolTip.Tip="Delete page (TODO)" IsEnabled="False"/>
+
+                <Border Classes="tbsep"/>
+
+                <!-- Edit tools (all placeholders for now) -->
+                <Button Classes="toolbar" Content="↖" ToolTip.Tip="Select (TODO)" IsEnabled="False"/>
+                <Button Classes="toolbar" Content="T" ToolTip.Tip="Text (TODO)" IsEnabled="False"/>
+                <Button Classes="toolbar" Content="▓" ToolTip.Tip="Highlight (TODO)" IsEnabled="False"/>
+                <Button Classes="toolbar" Content="✎" ToolTip.Tip="Draw (TODO)" IsEnabled="False"/>
+                <Button Classes="toolbar" Content="✍" ToolTip.Tip="Signature (TODO)" IsEnabled="False"/>
+                <Button Classes="toolbar" Content="🖼" ToolTip.Tip="Image (TODO)" IsEnabled="False"/>
+                <Button Classes="toolbar" Content="⌖" ToolTip.Tip="Crop (TODO)" IsEnabled="False"/>
+
+                <Border Classes="tbsep"/>
+
+                <Button Classes="toolbar" Content="↶" ToolTip.Tip="Undo (TODO)" IsEnabled="False"/>
+
+                <Border Classes="tbsep"/>
+
+                <!-- Zoom (placeholders) -->
+                <Button Classes="toolbar" Click="ZoomOut_Click" Content="−" ToolTip.Tip="Zoom out"/>
+                <TextBlock x:Name="ZoomLabel"
+                           Text="100%"
                            VerticalAlignment="Center"
-                           Foreground="{StaticResource TextSecondary}"/>
+                           Foreground="{StaticResource TextPrimary}"
+                           MinWidth="48"
+                           TextAlignment="Center"/>
+                <Button Classes="toolbar" Click="ZoomIn_Click" Content="+" ToolTip.Tip="Zoom in"/>
+                <Button Classes="toolbar" Click="FitWidth_Click" Content="↔" ToolTip.Tip="Fit Width"/>
             </StackPanel>
         </Border>
 
-        <!-- Preview area -->
-        <ScrollViewer Grid.Row="1"
-                      HorizontalScrollBarVisibility="Auto"
-                      VerticalScrollBarVisibility="Auto"
-                      Background="{StaticResource BgDark}">
-            <Image x:Name="PageImage"
-                   Stretch="None"
-                   HorizontalAlignment="Center"
-                   VerticalAlignment="Center"
-                   Margin="20"/>
-        </ScrollViewer>
+        <!-- ── Main content (sidebar + preview) ─────────────────────── -->
+        <Grid Grid.Row="2" ColumnDefinitions="240,*">
 
-        <!-- Status bar -->
-        <Border Grid.Row="2"
+            <!-- Sidebar -->
+            <Border Grid.Column="0"
+                    Background="{StaticResource BgPanel}"
+                    BorderBrush="{StaticResource BorderDim}"
+                    BorderThickness="0,0,1,0">
+                <Grid RowDefinitions="Auto,*">
+                    <Border Grid.Row="0"
+                            BorderBrush="{StaticResource BorderDim}"
+                            BorderThickness="0,0,0,1"
+                            Padding="12,8">
+                        <TextBlock Text="Pages"
+                                   FontSize="11"
+                                   FontWeight="SemiBold"
+                                   Foreground="{StaticResource TextSecondary}"/>
+                    </Border>
+                    <ListBox Grid.Row="1"
+                             x:Name="PageList"
+                             Padding="8"
+                             Background="Transparent"
+                             BorderThickness="0"
+                             SelectionChanged="PageList_SelectionChanged">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding}"
+                                           Foreground="{StaticResource TextPrimary}"
+                                           FontSize="11"
+                                           Padding="4"/>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                        <ListBox.Styles>
+                            <Style Selector="ListBoxItem">
+                                <Setter Property="Padding" Value="4"/>
+                                <Setter Property="Margin" Value="0,0,0,4"/>
+                                <Setter Property="Background" Value="{StaticResource BgDark}"/>
+                                <Setter Property="BorderBrush" Value="{StaticResource BorderDim}"/>
+                                <Setter Property="BorderThickness" Value="1"/>
+                                <Setter Property="CornerRadius" Value="3"/>
+                                <Setter Property="Cursor" Value="Hand"/>
+                            </Style>
+                            <Style Selector="ListBoxItem:selected /template/ ContentPresenter">
+                                <Setter Property="Background" Value="{StaticResource AccentGreenDim}"/>
+                            </Style>
+                            <Style Selector="ListBoxItem:pointerover /template/ ContentPresenter">
+                                <Setter Property="Background" Value="{StaticResource BgHover}"/>
+                            </Style>
+                        </ListBox.Styles>
+                    </ListBox>
+                </Grid>
+            </Border>
+
+            <!-- Preview area -->
+            <ScrollViewer Grid.Column="1"
+                          HorizontalScrollBarVisibility="Auto"
+                          VerticalScrollBarVisibility="Auto"
+                          Background="{StaticResource BgDark}">
+                <Panel>
+                    <!-- Empty-state hint -->
+                    <TextBlock x:Name="EmptyHint"
+                               Text="Open a PDF to begin"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center"
+                               Foreground="{StaticResource TextSecondary}"
+                               FontSize="14"/>
+                    <Image x:Name="PageImage"
+                           Stretch="None"
+                           HorizontalAlignment="Center"
+                           VerticalAlignment="Center"
+                           Margin="20"/>
+                </Panel>
+            </ScrollViewer>
+        </Grid>
+
+        <!-- ── Status bar ───────────────────────────────────────────── -->
+        <Border Grid.Row="3"
                 Background="{StaticResource BgPanel}"
                 BorderBrush="{StaticResource BorderDim}"
                 BorderThickness="0,1,0,0"
-                Padding="8,2">
-            <TextBlock x:Name="StatusText"
-                       Text="Ready"
-                       VerticalAlignment="Center"
-                       Foreground="{StaticResource TextSecondary}"/>
+                Padding="12,4">
+            <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Grid.Column="0"
+                           x:Name="StatusText"
+                           Text="Ready"
+                           Foreground="{StaticResource TextSecondary}"
+                           FontSize="11"
+                           VerticalAlignment="Center"/>
+                <TextBlock Grid.Column="1"
+                           x:Name="PageCounter"
+                           Text=""
+                           Foreground="{StaticResource TextSecondary}"
+                           FontSize="11"
+                           VerticalAlignment="Center"/>
+            </Grid>
         </Border>
 
     </Grid>
