@@ -123,9 +123,12 @@
                 <Border Classes="tbsep"/>
 
                 <!-- Page ops -->
-                <Button Classes="toolbar" Content="＋" ToolTip.Tip="Merge (TODO)" IsEnabled="False"/>
-                <Button Classes="toolbar" Content="✂" ToolTip.Tip="Split (TODO)" IsEnabled="False"/>
-                <Button Classes="toolbar danger" Content="✕" ToolTip.Tip="Delete page (TODO)" IsEnabled="False"/>
+                <Button Classes="toolbar" Click="InsertBlank_Click" Content="📄" ToolTip.Tip="Insert blank page after current"/>
+                <Button Classes="toolbar" Click="RotateLeft_Click" Content="⟲" ToolTip.Tip="Rotate page 90° counter-clockwise"/>
+                <Button Classes="toolbar" Click="RotateRight_Click" Content="⟳" ToolTip.Tip="Rotate page 90° clockwise"/>
+                <Button Classes="toolbar" Click="MoveUp_Click" Content="↑" ToolTip.Tip="Move page up"/>
+                <Button Classes="toolbar" Click="MoveDown_Click" Content="↓" ToolTip.Tip="Move page down"/>
+                <Button Classes="toolbar danger" Click="DeletePage_Click" Content="✕" ToolTip.Tip="Delete current page"/>
 
                 <Border Classes="tbsep"/>
 
