@@ -135,10 +135,10 @@
                 <Border Classes="tbsep"/>
 
                 <!-- Edit tools -->
-                <ToggleButton Classes="toolbar" Content="↖" ToolTip.Tip="Select" x:Name="ToolSelectBtn" Click="ToolSelect_Click" IsChecked="True"/>
+                <ToggleButton Classes="toolbar" Content="↖" ToolTip.Tip="Select (click annotation, Delete to remove)" x:Name="ToolSelectBtn" Click="ToolSelect_Click" IsChecked="True"/>
                 <Button Classes="toolbar" Content="T" ToolTip.Tip="Text (TODO)" IsEnabled="False"/>
                 <ToggleButton Classes="toolbar" Content="▓" ToolTip.Tip="Highlight" x:Name="ToolHighlightBtn" Click="ToolHighlight_Click"/>
-                <Button Classes="toolbar" Content="✎" ToolTip.Tip="Draw (TODO)" IsEnabled="False"/>
+                <ToggleButton Classes="toolbar" Content="✎" ToolTip.Tip="Draw (freehand pen)" x:Name="ToolDrawBtn" Click="ToolDraw_Click"/>
                 <Button Classes="toolbar" Content="✍" ToolTip.Tip="Signature (TODO)" IsEnabled="False"/>
                 <Button Classes="toolbar" Content="🖼" ToolTip.Tip="Image (TODO)" IsEnabled="False"/>
                 <Button Classes="toolbar" Content="⌖" ToolTip.Tip="Crop (TODO)" IsEnabled="False"/>

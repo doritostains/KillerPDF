@@ -27,10 +27,18 @@ public partial class MainWindow : Window
 
     private bool _isDrawing;
     private Avalonia.Point _drawStart;
-    private Rectangle? _activePreview;
+    private Avalonia.Controls.Shapes.Shape? _activePreview;
+    private InkAnnotation? _activeInk;
+    private Polyline? _activeInkVisual;
 
-    // Default highlight color (yellow with low opacity)
+    // Selection state
+    private PageAnnotation? _selectedAnnotation;
+    private Border? _selectionBorder;
+
+    // Default colors
     private static readonly ColorRgba HighlightColor = new(255, 255, 0, 80);
+    private static readonly ColorRgba InkColor = new(255, 0, 0, 255);
+    private const double InkStrokeWidth = 2.0;
 
     public MainWindow()
     {
@@ -85,7 +93,13 @@ public partial class MainWindow : Window
         if (ctrl && (e.Key == Key.OemMinus || e.Key == Key.Subtract)) { ZoomOut_Click(null, new RoutedEventArgs()); e.Handled = true; return; }
         if (ctrl && e.Key == Key.D0) { FitWidth_Click(null, new RoutedEventArgs()); e.Handled = true; return; }
 
-        if (e.Key == Key.Delete) { DeletePage_Click(null, new RoutedEventArgs()); e.Handled = true; return; }
+        if (e.Key == Key.Delete)
+        {
+            if (_selectedAnnotation is not null) DeleteSelectedAnnotation();
+            else DeletePage_Click(null, new RoutedEventArgs());
+            e.Handled = true; return;
+        }
+        if (e.Key == Key.Escape) { ClearSelection(); e.Handled = true; return; }
 
         await System.Threading.Tasks.Task.CompletedTask;
     }
@@ -436,82 +450,206 @@ public partial class MainWindow : Window
     // ── Tool selection ────────────────────────────────────────────────
     private void ToolSelect_Click(object? sender, RoutedEventArgs e) => SetTool(EditTool.Select);
     private void ToolHighlight_Click(object? sender, RoutedEventArgs e) => SetTool(EditTool.Highlight);
+    private void ToolDraw_Click(object? sender, RoutedEventArgs e) => SetTool(EditTool.Draw);
 
     private void SetTool(EditTool tool)
     {
         _currentTool = tool;
         ToolSelectBtn.IsChecked = tool == EditTool.Select;
         ToolHighlightBtn.IsChecked = tool == EditTool.Highlight;
+        ToolDrawBtn.IsChecked = tool == EditTool.Draw;
+        ClearSelection();
         StatusText.Text = $"Tool: {tool}";
+    }
+
+    private void ClearSelection()
+    {
+        _selectedAnnotation = null;
+        if (_selectionBorder is not null)
+        {
+            AnnotationCanvas.Children.Remove(_selectionBorder);
+            _selectionBorder = null;
+        }
     }
 
     // ── Annotation canvas pointer events ──────────────────────────────
     private void AnnotationCanvas_PointerPressed(object? sender, PointerPressedEventArgs e)
     {
         if (_doc is null) return;
-        if (_currentTool != EditTool.Highlight) return;
         if (!e.GetCurrentPoint(AnnotationCanvas).Properties.IsLeftButtonPressed) return;
+        var pos = e.GetPosition(AnnotationCanvas);
 
-        _isDrawing = true;
-        _drawStart = e.GetPosition(AnnotationCanvas);
-        _activePreview = new Rectangle
+        switch (_currentTool)
         {
-            Fill = new SolidColorBrush(Color.FromArgb(HighlightColor.A, HighlightColor.R, HighlightColor.G, HighlightColor.B)),
-            Width = 0,
-            Height = 0,
+            case EditTool.Select:
+                HandleSelectClick(pos);
+                e.Handled = true;
+                break;
+
+            case EditTool.Highlight:
+                _isDrawing = true;
+                _drawStart = pos;
+                var rect = new Rectangle
+                {
+                    Fill = new SolidColorBrush(Color.FromArgb(HighlightColor.A, HighlightColor.R, HighlightColor.G, HighlightColor.B)),
+                    Width = 0, Height = 0,
+                    IsHitTestVisible = false
+                };
+                Canvas.SetLeft(rect, pos.X);
+                Canvas.SetTop(rect, pos.Y);
+                AnnotationCanvas.Children.Add(rect);
+                _activePreview = rect;
+                e.Pointer.Capture(AnnotationCanvas);
+                e.Handled = true;
+                break;
+
+            case EditTool.Draw:
+                _isDrawing = true;
+                _drawStart = pos;
+                _activeInk = new InkAnnotation
+                {
+                    PageIndex = _currentPageIndex,
+                    StrokeWidth = InkStrokeWidth,
+                    ColorR = InkColor.R, ColorG = InkColor.G, ColorB = InkColor.B, ColorA = InkColor.A
+                };
+                _activeInk.Points.Add(new PointD(pos.X, pos.Y));
+                _activeInkVisual = new Polyline
+                {
+                    Stroke = new SolidColorBrush(Color.FromArgb(InkColor.A, InkColor.R, InkColor.G, InkColor.B)),
+                    StrokeThickness = InkStrokeWidth,
+                    StrokeLineCap = PenLineCap.Round,
+                    StrokeJoin = PenLineJoin.Round,
+                    IsHitTestVisible = false
+                };
+                _activeInkVisual.Points.Add(pos);
+                AnnotationCanvas.Children.Add(_activeInkVisual);
+                e.Pointer.Capture(AnnotationCanvas);
+                e.Handled = true;
+                break;
+        }
+    }
+
+    private void HandleSelectClick(Avalonia.Point pos)
+    {
+        ClearSelection();
+        if (!_annotations.TryGetValue(_currentPageIndex, out var annots)) return;
+
+        // Top-most first (annotations rendered in order, so iterate reverse)
+        for (int i = annots.Count - 1; i >= 0; i--)
+        {
+            var bounds = GetAnnotationBounds(annots[i]);
+            if (bounds.Contains(pos.X, pos.Y))
+            {
+                SelectAnnotation(annots[i], bounds);
+                return;
+            }
+        }
+    }
+
+    private static RectD GetAnnotationBounds(PageAnnotation annot) => annot switch
+    {
+        HighlightAnnotation ha => ha.Bounds,
+        InkAnnotation ia when ia.Points.Count > 0 => new RectD(
+            ia.Points.Min(p => p.X),
+            ia.Points.Min(p => p.Y),
+            System.Math.Max(4, ia.Points.Max(p => p.X) - ia.Points.Min(p => p.X)),
+            System.Math.Max(4, ia.Points.Max(p => p.Y) - ia.Points.Min(p => p.Y))),
+        _ => new RectD(0, 0, 0, 0)
+    };
+
+    private void SelectAnnotation(PageAnnotation annot, RectD bounds)
+    {
+        _selectedAnnotation = annot;
+        _selectionBorder = new Border
+        {
+            Width = bounds.Width + 8,
+            Height = bounds.Height + 8,
+            BorderBrush = new SolidColorBrush(Color.FromArgb(255, 0x1e, 0xa5, 0x4c)),
+            BorderThickness = new Avalonia.Thickness(2),
+            CornerRadius = new Avalonia.CornerRadius(2),
             IsHitTestVisible = false
         };
-        Canvas.SetLeft(_activePreview, _drawStart.X);
-        Canvas.SetTop(_activePreview, _drawStart.Y);
-        AnnotationCanvas.Children.Add(_activePreview);
-        e.Pointer.Capture(AnnotationCanvas);
-        e.Handled = true;
+        Canvas.SetLeft(_selectionBorder, bounds.X - 4);
+        Canvas.SetTop(_selectionBorder, bounds.Y - 4);
+        AnnotationCanvas.Children.Add(_selectionBorder);
+        StatusText.Text = $"Selected — press Delete to remove";
+    }
+
+    private void DeleteSelectedAnnotation()
+    {
+        if (_selectedAnnotation is null) return;
+        if (_annotations.TryGetValue(_currentPageIndex, out var annots))
+        {
+            annots.Remove(_selectedAnnotation);
+        }
+        ClearSelection();
+        RenderAllAnnotations(_currentPageIndex);
+        StatusText.Text = "Annotation deleted";
     }
 
     private void AnnotationCanvas_PointerMoved(object? sender, PointerEventArgs e)
     {
-        if (!_isDrawing || _activePreview is null) return;
+        if (!_isDrawing) return;
         var pos = e.GetPosition(AnnotationCanvas);
-        double x = System.Math.Min(pos.X, _drawStart.X);
-        double y = System.Math.Min(pos.Y, _drawStart.Y);
-        Canvas.SetLeft(_activePreview, x);
-        Canvas.SetTop(_activePreview, y);
-        _activePreview.Width = System.Math.Abs(pos.X - _drawStart.X);
-        _activePreview.Height = System.Math.Abs(pos.Y - _drawStart.Y);
+
+        if (_activePreview is Rectangle hl)
+        {
+            double x = System.Math.Min(pos.X, _drawStart.X);
+            double y = System.Math.Min(pos.Y, _drawStart.Y);
+            Canvas.SetLeft(hl, x);
+            Canvas.SetTop(hl, y);
+            hl.Width = System.Math.Abs(pos.X - _drawStart.X);
+            hl.Height = System.Math.Abs(pos.Y - _drawStart.Y);
+        }
+        else if (_activeInk is not null && _activeInkVisual is not null)
+        {
+            _activeInk.Points.Add(new PointD(pos.X, pos.Y));
+            _activeInkVisual.Points.Add(pos);
+        }
     }
 
     private void AnnotationCanvas_PointerReleased(object? sender, PointerReleasedEventArgs e)
     {
-        if (!_isDrawing || _activePreview is null) return;
+        if (!_isDrawing) return;
         _isDrawing = false;
         e.Pointer.Capture(null);
 
-        if (_activePreview.Width > 3 && _activePreview.Height > 3)
+        if (_activePreview is Rectangle hl)
         {
-            var rect = new RectD(
-                Canvas.GetLeft(_activePreview),
-                Canvas.GetTop(_activePreview),
-                _activePreview.Width,
-                _activePreview.Height);
-            var ha = new HighlightAnnotation
+            if (hl.Width > 3 && hl.Height > 3)
             {
-                PageIndex = _currentPageIndex,
-                Bounds = rect,
-                ColorR = HighlightColor.R,
-                ColorG = HighlightColor.G,
-                ColorB = HighlightColor.B,
-                ColorA = HighlightColor.A
-            };
-            if (!_annotations.ContainsKey(_currentPageIndex))
-                _annotations[_currentPageIndex] = new List<PageAnnotation>();
-            _annotations[_currentPageIndex].Add(ha);
-            StatusText.Text = $"Added highlight on page {_currentPageIndex + 1}";
+                var rect = new RectD(Canvas.GetLeft(hl), Canvas.GetTop(hl), hl.Width, hl.Height);
+                AddAnnotation(new HighlightAnnotation
+                {
+                    PageIndex = _currentPageIndex,
+                    Bounds = rect,
+                    ColorR = HighlightColor.R, ColorG = HighlightColor.G, ColorB = HighlightColor.B, ColorA = HighlightColor.A
+                }, "Added highlight");
+            }
+            else AnnotationCanvas.Children.Remove(hl);
+            _activePreview = null;
         }
-        else
+        else if (_activeInk is not null)
         {
-            AnnotationCanvas.Children.Remove(_activePreview);
+            if (_activeInk.Points.Count > 2)
+            {
+                AddAnnotation(_activeInk, "Added drawing");
+            }
+            else if (_activeInkVisual is not null)
+            {
+                AnnotationCanvas.Children.Remove(_activeInkVisual);
+            }
+            _activeInk = null;
+            _activeInkVisual = null;
         }
-        _activePreview = null;
+    }
+
+    private void AddAnnotation(PageAnnotation annot, string statusVerb)
+    {
+        if (!_annotations.ContainsKey(_currentPageIndex))
+            _annotations[_currentPageIndex] = new List<PageAnnotation>();
+        _annotations[_currentPageIndex].Add(annot);
+        StatusText.Text = $"{statusVerb} on page {_currentPageIndex + 1}";
     }
 
     // ── Annotation rendering ──────────────────────────────────────────
@@ -536,7 +674,20 @@ public partial class MainWindow : Window
                     Canvas.SetTop(rect, ha.Bounds.Y);
                     AnnotationCanvas.Children.Add(rect);
                     break;
-                // Future: TextAnnotation, InkAnnotation, etc.
+
+                case InkAnnotation ia when ia.Points.Count >= 2:
+                    var poly = new Polyline
+                    {
+                        Stroke = new SolidColorBrush(Color.FromArgb(ia.ColorA, ia.ColorR, ia.ColorG, ia.ColorB)),
+                        StrokeThickness = ia.StrokeWidth,
+                        StrokeLineCap = PenLineCap.Round,
+                        StrokeJoin = PenLineJoin.Round,
+                        IsHitTestVisible = false
+                    };
+                    foreach (var p in ia.Points) poly.Points.Add(new Avalonia.Point(p.X, p.Y));
+                    AnnotationCanvas.Children.Add(poly);
+                    break;
+                // Future: TextAnnotation, SignatureAnnotation, ImageAnnotation, etc.
             }
         }
     }
