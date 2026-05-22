@@ -405,8 +405,7 @@ namespace KillerPDF
             {
                 var indices = new List<int>();
                 foreach (var item in selected) indices.Add(PageList.Items.IndexOf(item));
-                foreach (var idx in indices)
-                    _doc.Pages[idx].Rotate = ((_doc.Pages[idx].Rotate + delta) % 360 + 360) % 360;
+                PdfDocumentService.RotatePages(_doc, indices, delta);
                 int restoreIdx = PageList.SelectedIndex;
                 SaveTempAndReload();
                 PageList.SelectedIndex = Math.Min(restoreIdx, PageList.Items.Count - 1);
@@ -4341,20 +4340,7 @@ namespace KillerPDF
             {
                 foreach (var file in dlg.FileNames)
                 {
-                    int pageOffset = doc.PageCount;
-
-                    // Open twice: Import mode for AddPage, ReadOnly for catalog access.
-                    using var srcRead = PdfReader.Open(file, PdfDocumentOpenMode.ReadOnly);
-                    var namedDestMap = PdfLinkExtractor.BuildNamedDestMap(srcRead);
-
-                    using var src = PdfReader.Open(file, PdfDocumentOpenMode.Import);
-                    for (int i = 0; i < src.PageCount; i++)
-                        doc.AddPage(src.Pages[i]);
-
-                    // Rewrite named-destination links in the newly added pages so they
-                    // resolve correctly after the catalog is not imported.
-                    if (namedDestMap.Count > 0)
-                        PdfLinkExtractor.RewriteNamedDestLinks(doc, pageOffset, namedDestMap);
+                    PdfDocumentService.AppendDocument(doc, file);
                 }
                 SaveTempAndReload();
                 SetStatus($"Merged {dlg.FileNames.Length} file(s) - {_doc?.PageCount} total pages");
@@ -4377,11 +4363,7 @@ namespace KillerPDF
             {
                 var indices = new List<int>();
                 foreach (var item in selected) indices.Add(PageList.Items.IndexOf(item));
-                using var importDoc = PdfReader.Open(currentFile, PdfDocumentOpenMode.Import);
-                var newDoc = new PdfDocument();
-                foreach (var idx in indices.OrderBy(i => i))
-                    newDoc.AddPage(importDoc.Pages[idx]);
-                newDoc.Save(dlg.FileName);
+                PdfDocumentService.ExtractPages(currentFile, indices, dlg.FileName);
                 SetStatus($"Extracted {indices.Count} page(s) to {System.IO.Path.GetFileName(dlg.FileName)}");
             }
             catch (Exception ex)
@@ -4403,8 +4385,7 @@ namespace KillerPDF
             {
                 var indices = new List<int>();
                 foreach (var item in selected) indices.Add(PageList.Items.IndexOf(item));
-                foreach (var idx in indices.OrderByDescending(i => i))
-                    doc.Pages.RemoveAt(idx);
+                PdfDocumentService.DeletePages(doc, indices);
                 SaveTempAndReload();
                 SetStatus($"Deleted {indices.Count} page(s) - {_doc?.PageCount} remaining");
             }
@@ -4421,11 +4402,10 @@ namespace KillerPDF
             int insertAfter = PageList.SelectedIndex >= 0 ? PageList.SelectedIndex : doc.PageCount - 1;
             try
             {
-                var blank = new PdfPage { Width = XUnit.FromPoint(595), Height = XUnit.FromPoint(842) };
-                doc.Pages.Insert(insertAfter + 1, blank);
+                int insertedAt = PdfDocumentService.InsertBlankPage(doc, insertAfter);
                 SaveTempAndReload();
-                PageList.SelectedIndex = insertAfter + 1;
-                SetStatus($"Inserted blank page at position {insertAfter + 2}");
+                PageList.SelectedIndex = insertedAt;
+                SetStatus($"Inserted blank page at position {insertedAt + 1}");
             }
             catch (Exception ex)
             {
@@ -4436,11 +4416,8 @@ namespace KillerPDF
         private void MoveUp_Click(object sender, RoutedEventArgs e)
         {
             if (_doc is null || PageList.SelectedIndex <= 0) return;
-            var doc = _doc;
             int idx = PageList.SelectedIndex;
-            var page = doc.Pages[idx];
-            doc.Pages.RemoveAt(idx);
-            doc.Pages.Insert(idx - 1, page);
+            PdfDocumentService.MovePage(_doc, idx, idx - 1);
             SaveTempAndReload();
             PageList.SelectedIndex = idx - 1;
         }
@@ -4448,11 +4425,8 @@ namespace KillerPDF
         private void MoveDown_Click(object sender, RoutedEventArgs e)
         {
             if (_doc is null || PageList.SelectedIndex < 0 || PageList.SelectedIndex >= _doc.PageCount - 1) return;
-            var doc = _doc;
             int idx = PageList.SelectedIndex;
-            var page = doc.Pages[idx];
-            doc.Pages.RemoveAt(idx);
-            doc.Pages.Insert(idx + 1, page);
+            PdfDocumentService.MovePage(_doc, idx, idx + 1);
             SaveTempAndReload();
             PageList.SelectedIndex = idx + 1;
         }
