@@ -1,0 +1,125 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag name to release as (e.g. v1.4.2)'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: ${{ matrix.label }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Original tiny ~6 MB WPF .exe (Windows-only). Keeps the small-binary story
+          # that the project's existing users value.
+          - os: windows-latest
+            label: WPF (Windows .NET Framework 4.8)
+            kind: wpf
+            project: src/KillerPDF.Wpf/KillerPDF.Wpf.csproj
+            rid: ""
+            artifact_name: KillerPDF-Windows-net48.exe
+            asset_path: src/KillerPDF.Wpf/bin/Release/net48/publish/KillerPDF.exe
+
+          # Avalonia portable single-file builds (5 targets)
+          - os: windows-latest
+            label: Avalonia Windows x64 (portable)
+            kind: avalonia
+            project: src/KillerPDF.Avalonia/KillerPDF.Avalonia.csproj
+            rid: win-x64
+            artifact_name: KillerPDF-Windows-Portable-x64.exe
+            asset_path: src/KillerPDF.Avalonia/bin/Release/net9.0/win-x64/publish/KillerPDF.exe
+
+          - os: ubuntu-latest
+            label: Avalonia Linux x64
+            kind: avalonia
+            project: src/KillerPDF.Avalonia/KillerPDF.Avalonia.csproj
+            rid: linux-x64
+            artifact_name: KillerPDF-Linux-x64
+            asset_path: src/KillerPDF.Avalonia/bin/Release/net9.0/linux-x64/publish/KillerPDF
+
+          - os: macos-latest
+            label: Avalonia macOS x64
+            kind: avalonia-macos
+            project: src/KillerPDF.Avalonia/KillerPDF.Avalonia.csproj
+            rid: osx-x64
+            artifact_name: KillerPDF-macOS-x64.app.zip
+            asset_path: dist/KillerPDF-macOS-x64.app.zip
+
+          - os: macos-latest
+            label: Avalonia macOS arm64
+            kind: avalonia-macos
+            project: src/KillerPDF.Avalonia/KillerPDF.Avalonia.csproj
+            rid: osx-arm64
+            artifact_name: KillerPDF-macOS-arm64.app.zip
+            asset_path: dist/KillerPDF-macOS-arm64.app.zip
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET 9 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+      # ── WPF .NET Framework 4.8 build ─────────────────────────────────
+      - name: Publish WPF (net48)
+        if: matrix.kind == 'wpf'
+        shell: pwsh
+        run: |
+          dotnet publish "${{ matrix.project }}" `
+            -c Release `
+            -p:PublishProfile=FolderProfile1
+
+      # ── Avalonia portable single-file build ──────────────────────────
+      - name: Publish Avalonia (${{ matrix.rid }})
+        if: matrix.kind == 'avalonia'
+        run: |
+          dotnet publish "${{ matrix.project }}" \
+            -c Release \
+            -r ${{ matrix.rid }}
+
+      # ── Avalonia macOS publish + .app bundle wrapping ────────────────
+      - name: Publish Avalonia + bundle for macOS (${{ matrix.rid }})
+        if: matrix.kind == 'avalonia-macos'
+        run: |
+          dotnet publish "${{ matrix.project }}" \
+            -c Release \
+            -r ${{ matrix.rid }}
+          mkdir -p dist
+          chmod +x build/make-macos-bundle.sh
+          build/make-macos-bundle.sh \
+            "src/KillerPDF.Avalonia/bin/Release/net9.0/${{ matrix.rid }}/publish" \
+            "dist" \
+            "${{ matrix.rid }}"
+          cd dist
+          zip -r -y "KillerPDF-macOS-${{ matrix.rid == 'osx-arm64' && 'arm64' || 'x64' }}.app.zip" KillerPDF.app
+          rm -rf KillerPDF.app
+
+      - name: Verify artifact exists
+        shell: bash
+        run: |
+          if [ ! -f "${{ matrix.asset_path }}" ]; then
+            echo "::error::Expected artifact missing: ${{ matrix.asset_path }}"
+            ls -la "$(dirname "${{ matrix.asset_path }}")" || true
+            exit 1
+          fi
+          echo "Artifact: ${{ matrix.asset_path }} ($(du -h "${{ matrix.asset_path }}" | cut -f1))"
+
+      - name: Upload to release
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          files: ${{ matrix.asset_path }}
+          fail_on_unmatched_files: true
