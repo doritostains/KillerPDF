@@ -54,6 +54,10 @@ public partial class MainWindow : Window
     // Simple linear undo stack of annotation removals (snapshots of _annotations per change)
     private readonly Stack<Action> _undoStack = new();
 
+    // Pending crop rectangle (in canvas coords). Apply commits to PDF MediaBox.
+    private Rectangle? _cropPreviewRect;
+    private RectD _pendingCropCanvas;
+
     public MainWindow()
     {
         InitializeComponent();
@@ -468,15 +472,18 @@ public partial class MainWindow : Window
     private void ToolHighlight_Click(object? sender, RoutedEventArgs e) => SetTool(EditTool.Highlight);
     private void ToolDraw_Click(object? sender, RoutedEventArgs e) => SetTool(EditTool.Draw);
     private void ToolText_Click(object? sender, RoutedEventArgs e) => SetTool(EditTool.Text);
+    private void ToolCrop_Click(object? sender, RoutedEventArgs e) => SetTool(EditTool.Crop);
 
     private void SetTool(EditTool tool)
     {
         CommitActiveTextBox();
+        CropCancel_Click(null, new RoutedEventArgs());
         _currentTool = tool;
         ToolSelectBtn.IsChecked = tool == EditTool.Select;
         ToolHighlightBtn.IsChecked = tool == EditTool.Highlight;
         ToolDrawBtn.IsChecked = tool == EditTool.Draw;
         ToolTextBtn.IsChecked = tool == EditTool.Text;
+        ToolCropBtn.IsChecked = tool == EditTool.Crop;
         ClearSelection();
         StatusText.Text = $"Tool: {tool}";
     }
@@ -550,6 +557,27 @@ public partial class MainWindow : Window
                 };
                 _activeInkVisual.Points.Add(pos);
                 AnnotationCanvas.Children.Add(_activeInkVisual);
+                e.Pointer.Capture(AnnotationCanvas);
+                e.Handled = true;
+                break;
+
+            case EditTool.Crop:
+                _isDrawing = true;
+                _drawStart = pos;
+                CropCancel_Click(null, new RoutedEventArgs());
+                var cropRect = new Rectangle
+                {
+                    Stroke = new SolidColorBrush(Color.FromArgb(255, 0x1e, 0xa5, 0x4c)),
+                    StrokeThickness = 2,
+                    StrokeDashArray = new Avalonia.Collections.AvaloniaList<double> { 5, 3 },
+                    Fill = new SolidColorBrush(Color.FromArgb(20, 0x1e, 0xa5, 0x4c)),
+                    Width = 0, Height = 0,
+                    IsHitTestVisible = false
+                };
+                Canvas.SetLeft(cropRect, pos.X);
+                Canvas.SetTop(cropRect, pos.Y);
+                AnnotationCanvas.Children.Add(cropRect);
+                _activePreview = cropRect;
                 e.Pointer.Capture(AnnotationCanvas);
                 e.Handled = true;
                 break;
@@ -650,7 +678,21 @@ public partial class MainWindow : Window
 
         if (_activePreview is Rectangle hl)
         {
-            if (hl.Width > 3 && hl.Height > 3)
+            if (_currentTool == EditTool.Crop)
+            {
+                if (hl.Width > 10 && hl.Height > 10)
+                {
+                    _pendingCropCanvas = new RectD(Canvas.GetLeft(hl), Canvas.GetTop(hl), hl.Width, hl.Height);
+                    _cropPreviewRect = hl;
+                    CropBar.IsVisible = true;
+                    StatusText.Text = "Crop pending — click Apply to commit, or X to cancel";
+                }
+                else
+                {
+                    AnnotationCanvas.Children.Remove(hl);
+                }
+            }
+            else if (hl.Width > 3 && hl.Height > 3)
             {
                 var rect = new RectD(Canvas.GetLeft(hl), Canvas.GetTop(hl), hl.Width, hl.Height);
                 AddAnnotation(new HighlightAnnotation
@@ -989,6 +1031,48 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             StatusText.Text = $"Insert failed: {ex.Message}";
+        }
+    }
+
+    // ── Crop ──────────────────────────────────────────────────────────
+    private void CropCancel_Click(object? sender, RoutedEventArgs e)
+    {
+        if (_cropPreviewRect is not null)
+        {
+            AnnotationCanvas.Children.Remove(_cropPreviewRect);
+            _cropPreviewRect = null;
+        }
+        CropBar.IsVisible = false;
+    }
+
+    private void CropApply_Click(object? sender, RoutedEventArgs e)
+    {
+        if (_doc is null || _cropPreviewRect is null || !_renderDims.TryGetValue(_currentPageIndex, out var dims))
+        {
+            CropCancel_Click(null, new RoutedEventArgs());
+            return;
+        }
+        try
+        {
+            var page = _doc.Pages[_currentPageIndex];
+            // Canvas → PDF user-space conversion. PDF origin is bottom-left.
+            double sx = page.Width.Point / dims.w;
+            double sy = page.Height.Point / dims.h;
+            double pdfLeft = page.MediaBox.X1 + _pendingCropCanvas.X * sx;
+            double pdfRight = page.MediaBox.X1 + (_pendingCropCanvas.X + _pendingCropCanvas.Width) * sx;
+            double pdfTop = page.MediaBox.Y2 - _pendingCropCanvas.Y * sy;
+            double pdfBottom = page.MediaBox.Y2 - (_pendingCropCanvas.Y + _pendingCropCanvas.Height) * sy;
+            page.MediaBox = new PdfSharpCore.Pdf.PdfRectangle(
+                new PdfSharpCore.Drawing.XPoint(pdfLeft, pdfBottom),
+                new PdfSharpCore.Drawing.XPoint(pdfRight, pdfTop));
+            PersistWorkingCopy();
+            CropCancel_Click(null, new RoutedEventArgs());
+            RenderCurrentPage();
+            StatusText.Text = $"Cropped page {_currentPageIndex + 1}";
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = $"Crop failed: {ex.Message}";
         }
     }
 
