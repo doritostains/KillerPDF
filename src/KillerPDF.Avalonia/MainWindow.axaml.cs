@@ -35,10 +35,16 @@ public partial class MainWindow : Window
     private PageAnnotation? _selectedAnnotation;
     private Border? _selectionBorder;
 
+    // Active text box being edited
+    private TextBox? _activeTextBox;
+    private Avalonia.Point _activeTextPos;
+
     // Default colors
     private static readonly ColorRgba HighlightColor = new(255, 255, 0, 80);
     private static readonly ColorRgba InkColor = new(255, 0, 0, 255);
+    private static readonly ColorRgba TextColor = new(0, 0, 0, 255);
     private const double InkStrokeWidth = 2.0;
+    private const double TextFontSize = 14.0;
 
     public MainWindow()
     {
@@ -451,13 +457,16 @@ public partial class MainWindow : Window
     private void ToolSelect_Click(object? sender, RoutedEventArgs e) => SetTool(EditTool.Select);
     private void ToolHighlight_Click(object? sender, RoutedEventArgs e) => SetTool(EditTool.Highlight);
     private void ToolDraw_Click(object? sender, RoutedEventArgs e) => SetTool(EditTool.Draw);
+    private void ToolText_Click(object? sender, RoutedEventArgs e) => SetTool(EditTool.Text);
 
     private void SetTool(EditTool tool)
     {
+        CommitActiveTextBox();
         _currentTool = tool;
         ToolSelectBtn.IsChecked = tool == EditTool.Select;
         ToolHighlightBtn.IsChecked = tool == EditTool.Highlight;
         ToolDrawBtn.IsChecked = tool == EditTool.Draw;
+        ToolTextBtn.IsChecked = tool == EditTool.Text;
         ClearSelection();
         StatusText.Text = $"Tool: {tool}";
     }
@@ -479,10 +488,18 @@ public partial class MainWindow : Window
         if (!e.GetCurrentPoint(AnnotationCanvas).Properties.IsLeftButtonPressed) return;
         var pos = e.GetPosition(AnnotationCanvas);
 
+        // Any pending text edit gets committed before starting another tool action.
+        CommitActiveTextBox();
+
         switch (_currentTool)
         {
             case EditTool.Select:
                 HandleSelectClick(pos);
+                e.Handled = true;
+                break;
+
+            case EditTool.Text:
+                PlaceTextBox(pos);
                 e.Handled = true;
                 break;
 
@@ -554,6 +571,11 @@ public partial class MainWindow : Window
             ia.Points.Min(p => p.Y),
             System.Math.Max(4, ia.Points.Max(p => p.X) - ia.Points.Min(p => p.X)),
             System.Math.Max(4, ia.Points.Max(p => p.Y) - ia.Points.Min(p => p.Y))),
+        TextAnnotation ta => new RectD(ta.Position.X, ta.Position.Y,
+            System.Math.Max(60, ta.Content.Length * ta.FontSize * 0.6),
+            ta.FontSize * 1.4),
+        ImageAnnotation iaa => new RectD(iaa.Position.X, iaa.Position.Y,
+            iaa.SourceWidth * iaa.Scale, iaa.SourceHeight * iaa.Scale),
         _ => new RectD(0, 0, 0, 0)
     };
 
@@ -652,6 +674,133 @@ public partial class MainWindow : Window
         StatusText.Text = $"{statusVerb} on page {_currentPageIndex + 1}";
     }
 
+    // ── Text tool ─────────────────────────────────────────────────────
+    private void PlaceTextBox(Avalonia.Point pos)
+    {
+        var tb = new TextBox
+        {
+            FontSize = TextFontSize,
+            FontFamily = new FontFamily("Inter, sans-serif"),
+            Foreground = new SolidColorBrush(Color.FromArgb(TextColor.A, TextColor.R, TextColor.G, TextColor.B)),
+            Background = new SolidColorBrush(Color.FromArgb(240, 255, 255, 255)),
+            BorderBrush = new SolidColorBrush(Color.FromArgb(255, 0x1e, 0xa5, 0x4c)),
+            BorderThickness = new Avalonia.Thickness(2),
+            Padding = new Avalonia.Thickness(2, 0),
+            MinWidth = 100,
+            Text = ""
+        };
+        Canvas.SetLeft(tb, pos.X);
+        Canvas.SetTop(tb, pos.Y);
+        AnnotationCanvas.Children.Add(tb);
+        _activeTextBox = tb;
+        _activeTextPos = pos;
+        tb.KeyDown += TextBox_KeyDown;
+        tb.LostFocus += (_, _) => CommitActiveTextBox();
+        tb.Focus();
+    }
+
+    private void TextBox_KeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape)
+        {
+            CancelActiveTextBox();
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Enter && !e.KeyModifiers.HasFlag(KeyModifiers.Shift))
+        {
+            CommitActiveTextBox();
+            e.Handled = true;
+        }
+        // Shift+Enter lets the user add a newline (handled by the default TextBox behavior).
+    }
+
+    private void CancelActiveTextBox()
+    {
+        if (_activeTextBox is null) return;
+        AnnotationCanvas.Children.Remove(_activeTextBox);
+        _activeTextBox = null;
+    }
+
+    private void CommitActiveTextBox()
+    {
+        if (_activeTextBox is null) return;
+        var tb = _activeTextBox;
+        var content = tb.Text ?? "";
+        AnnotationCanvas.Children.Remove(tb);
+        _activeTextBox = null;
+        if (!string.IsNullOrWhiteSpace(content))
+        {
+            AddAnnotation(new TextAnnotation
+            {
+                PageIndex = _currentPageIndex,
+                Position = new PointD(_activeTextPos.X, _activeTextPos.Y),
+                Content = content,
+                FontSize = TextFontSize,
+                ColorR = TextColor.R, ColorG = TextColor.G, ColorB = TextColor.B, ColorA = TextColor.A
+            }, "Added text");
+            RenderAllAnnotations(_currentPageIndex);
+        }
+    }
+
+    // ── Image tool ────────────────────────────────────────────────────
+    private async void InsertImage_Click(object? sender, RoutedEventArgs e)
+    {
+        if (_doc is null) { StatusText.Text = "Open a PDF first."; return; }
+        var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "Insert Image",
+            AllowMultiple = false,
+            FileTypeFilter = new[]
+            {
+                new FilePickerFileType("Image files")
+                {
+                    Patterns = new[] { "*.png", "*.jpg", "*.jpeg", "*.bmp", "*.gif", "*.tiff", "*.tif" }
+                }
+            }
+        });
+        if (files.Count == 0) return;
+        var path = files[0].TryGetLocalPath();
+        if (path is null) { StatusText.Text = "Could not resolve image path."; return; }
+        try
+        {
+            var bytes = System.IO.File.ReadAllBytes(path);
+            // Measure source dims by decoding once into an Avalonia bitmap
+            double srcW = 400, srcH = 300;
+            using (var ms = new System.IO.MemoryStream(bytes))
+            {
+                try
+                {
+                    var bmp = new Bitmap(ms);
+                    srcW = bmp.PixelSize.Width;
+                    srcH = bmp.PixelSize.Height;
+                }
+                catch { /* fall back to defaults if Bitmap can't decode */ }
+            }
+            const double MaxCanvasDim = 250;
+            double scale = System.Math.Min(1.0, System.Math.Min(MaxCanvasDim / srcW, MaxCanvasDim / srcH));
+
+            // Center-ish on the current canvas
+            double cx = (AnnotationCanvas.Width - srcW * scale) / 2;
+            double cy = (AnnotationCanvas.Height - srcH * scale) / 2;
+
+            var ia = new ImageAnnotation
+            {
+                PageIndex = _currentPageIndex,
+                Position = new PointD(cx, cy),
+                Scale = scale,
+                SourceWidth = srcW,
+                SourceHeight = srcH,
+                ImageData = Convert.ToBase64String(bytes)
+            };
+            AddAnnotation(ia, "Inserted image");
+            RenderAllAnnotations(_currentPageIndex);
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = $"Insert image failed: {ex.Message}";
+        }
+    }
+
     // ── Annotation rendering ──────────────────────────────────────────
     private void RenderAllAnnotations(int pageIndex)
     {
@@ -687,7 +836,38 @@ public partial class MainWindow : Window
                     foreach (var p in ia.Points) poly.Points.Add(new Avalonia.Point(p.X, p.Y));
                     AnnotationCanvas.Children.Add(poly);
                     break;
-                // Future: TextAnnotation, SignatureAnnotation, ImageAnnotation, etc.
+
+                case TextAnnotation ta:
+                    var tb = new TextBlock
+                    {
+                        Text = ta.Content,
+                        FontSize = ta.FontSize,
+                        Foreground = new SolidColorBrush(Color.FromArgb(ta.ColorA, ta.ColorR, ta.ColorG, ta.ColorB)),
+                        IsHitTestVisible = false
+                    };
+                    Canvas.SetLeft(tb, ta.Position.X);
+                    Canvas.SetTop(tb, ta.Position.Y);
+                    AnnotationCanvas.Children.Add(tb);
+                    break;
+
+                case ImageAnnotation iaa:
+                    try
+                    {
+                        var bytes = Convert.FromBase64String(iaa.ImageData);
+                        using var ms = new System.IO.MemoryStream(bytes);
+                        var img = new Image
+                        {
+                            Source = new Bitmap(ms),
+                            Width = iaa.SourceWidth * iaa.Scale,
+                            Height = iaa.SourceHeight * iaa.Scale,
+                            IsHitTestVisible = false
+                        };
+                        Canvas.SetLeft(img, iaa.Position.X);
+                        Canvas.SetTop(img, iaa.Position.Y);
+                        AnnotationCanvas.Children.Add(img);
+                    }
+                    catch { /* skip broken image */ }
+                    break;
             }
         }
     }

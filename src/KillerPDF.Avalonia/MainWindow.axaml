@@ -136,11 +136,11 @@
 
                 <!-- Edit tools -->
                 <ToggleButton Classes="toolbar" Content="↖" ToolTip.Tip="Select (click annotation, Delete to remove)" x:Name="ToolSelectBtn" Click="ToolSelect_Click" IsChecked="True"/>
-                <Button Classes="toolbar" Content="T" ToolTip.Tip="Text (TODO)" IsEnabled="False"/>
+                <ToggleButton Classes="toolbar" Content="T" ToolTip.Tip="Text (click to place text)" x:Name="ToolTextBtn" Click="ToolText_Click"/>
                 <ToggleButton Classes="toolbar" Content="▓" ToolTip.Tip="Highlight" x:Name="ToolHighlightBtn" Click="ToolHighlight_Click"/>
                 <ToggleButton Classes="toolbar" Content="✎" ToolTip.Tip="Draw (freehand pen)" x:Name="ToolDrawBtn" Click="ToolDraw_Click"/>
+                <Button Classes="toolbar" Click="InsertImage_Click" Content="🖼" ToolTip.Tip="Insert image"/>
                 <Button Classes="toolbar" Content="✍" ToolTip.Tip="Signature (TODO)" IsEnabled="False"/>
-                <Button Classes="toolbar" Content="🖼" ToolTip.Tip="Image (TODO)" IsEnabled="False"/>
                 <Button Classes="toolbar" Content="⌖" ToolTip.Tip="Crop (TODO)" IsEnabled="False"/>
 
                 <Border Classes="tbsep"/>
