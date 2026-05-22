@@ -35,6 +35,13 @@ public partial class MainWindow : Window
     private PageAnnotation? _selectedAnnotation;
     private Border? _selectionBorder;
 
+    // Annotation drag state
+    private bool _isDraggingAnnotation;
+    private Avalonia.Point _dragAnnotStart;
+    private PointD _dragAnnotOrigPos;
+    private RectD _dragAnnotOrigBounds;
+    private List<PointD>? _dragInkOrigPoints;
+
     // Active text box being edited
     private TextBox? _activeTextBox;
     private Avalonia.Point _activeTextPos;
@@ -586,19 +593,95 @@ public partial class MainWindow : Window
 
     private void HandleSelectClick(Avalonia.Point pos)
     {
+        // If the click is on the already-selected annotation, start a drag without
+        // re-selecting. Otherwise: clear, hit-test, select new if any.
+        if (_selectedAnnotation is not null)
+        {
+            var existingBounds = GetAnnotationBounds(_selectedAnnotation);
+            if (existingBounds.Contains(pos.X, pos.Y))
+            {
+                StartAnnotationDrag(pos);
+                return;
+            }
+        }
+
         ClearSelection();
         if (!_annotations.TryGetValue(_currentPageIndex, out var annots)) return;
 
-        // Top-most first (annotations rendered in order, so iterate reverse)
         for (int i = annots.Count - 1; i >= 0; i--)
         {
             var bounds = GetAnnotationBounds(annots[i]);
             if (bounds.Contains(pos.X, pos.Y))
             {
                 SelectAnnotation(annots[i], bounds);
+                StartAnnotationDrag(pos);
                 return;
             }
         }
+    }
+
+    private void StartAnnotationDrag(Avalonia.Point pos)
+    {
+        if (_selectedAnnotation is null) return;
+        _isDraggingAnnotation = true;
+        _dragAnnotStart = pos;
+        switch (_selectedAnnotation)
+        {
+            case HighlightAnnotation ha:
+                _dragAnnotOrigBounds = ha.Bounds;
+                break;
+            case TextAnnotation ta:
+                _dragAnnotOrigPos = ta.Position;
+                break;
+            case InkAnnotation ia:
+                // Capture starting points so drag delta applies relative to the original
+                _dragInkOrigPoints = ia.Points.Select(p => new PointD(p.X, p.Y)).ToList();
+                break;
+            case PlacedAnnotation pa:
+                _dragAnnotOrigPos = pa.Position;
+                break;
+        }
+    }
+
+    private void UpdateAnnotationDrag(Avalonia.Point pos)
+    {
+        if (!_isDraggingAnnotation || _selectedAnnotation is null) return;
+        double dx = pos.X - _dragAnnotStart.X;
+        double dy = pos.Y - _dragAnnotStart.Y;
+
+        switch (_selectedAnnotation)
+        {
+            case HighlightAnnotation ha:
+                ha.Bounds = new RectD(
+                    _dragAnnotOrigBounds.X + dx,
+                    _dragAnnotOrigBounds.Y + dy,
+                    _dragAnnotOrigBounds.Width,
+                    _dragAnnotOrigBounds.Height);
+                break;
+            case TextAnnotation ta:
+                ta.Position = new PointD(_dragAnnotOrigPos.X + dx, _dragAnnotOrigPos.Y + dy);
+                break;
+            case InkAnnotation ia when _dragInkOrigPoints is not null:
+                ia.Points.Clear();
+                foreach (var op in _dragInkOrigPoints)
+                    ia.Points.Add(new PointD(op.X + dx, op.Y + dy));
+                break;
+            case PlacedAnnotation pa:
+                pa.Position = new PointD(_dragAnnotOrigPos.X + dx, _dragAnnotOrigPos.Y + dy);
+                break;
+        }
+
+        RenderAllAnnotations(_currentPageIndex);
+        // Re-show selection border at new position
+        var newBounds = GetAnnotationBounds(_selectedAnnotation);
+        if (_selectionBorder is not null) AnnotationCanvas.Children.Remove(_selectionBorder);
+        SelectAnnotation(_selectedAnnotation, newBounds);
+    }
+
+    private void EndAnnotationDrag()
+    {
+        _isDraggingAnnotation = false;
+        _dragInkOrigPoints = null;
     }
 
     private static RectD GetAnnotationBounds(PageAnnotation annot) => annot switch
@@ -651,8 +734,13 @@ public partial class MainWindow : Window
 
     private void AnnotationCanvas_PointerMoved(object? sender, PointerEventArgs e)
     {
-        if (!_isDrawing) return;
         var pos = e.GetPosition(AnnotationCanvas);
+        if (_isDraggingAnnotation)
+        {
+            UpdateAnnotationDrag(pos);
+            return;
+        }
+        if (!_isDrawing) return;
 
         if (_activePreview is Rectangle hl)
         {
@@ -672,6 +760,12 @@ public partial class MainWindow : Window
 
     private void AnnotationCanvas_PointerReleased(object? sender, PointerReleasedEventArgs e)
     {
+        if (_isDraggingAnnotation)
+        {
+            EndAnnotationDrag();
+            e.Pointer.Capture(null);
+            return;
+        }
         if (!_isDrawing) return;
         _isDrawing = false;
         e.Pointer.Capture(null);
