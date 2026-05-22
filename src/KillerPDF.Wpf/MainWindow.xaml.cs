@@ -2428,18 +2428,18 @@ namespace KillerPDF
             var annot = new SignatureAnnotation
             {
                 PageIndex = pageIdx,
-                Position = pos,
+                Position = pos.ToCore(),
                 Scale = scale,
                 SourceWidth = sig.CanvasWidth,
                 SourceHeight = sig.CanvasHeight,
                 ImageData = sig.ImageData
             };
 
-            // Drawn signature — convert serializable points to WPF points
+            // Drawn signature — convert serializable points to PointD primitives
             if (sig.ImageData is null)
             {
                 foreach (var stroke in sig.Strokes)
-                    annot.Strokes.Add([..stroke.Select(p => new Point(p.X, p.Y))]);
+                    annot.Strokes.Add([..stroke.Select(p => new PointD(p.X, p.Y))]);
             }
 
             AddAnnotation(annot);
@@ -2482,7 +2482,7 @@ namespace KillerPDF
                 var imgAnnot = new ImageAnnotation
                 {
                     PageIndex = pageIdx,
-                    Position = pos,
+                    Position = pos.ToCore(),
                     Scale = scale,
                     SourceWidth = srcW,
                     SourceHeight = srcH,
@@ -2601,7 +2601,7 @@ namespace KillerPDF
                                     SelectAnnotation(pa, paBounds);
                                     _isDraggingAnnot = true;
                                     _dragAnnotStart = pos;
-                                    _dragAnnotOrigPos = pa.Position;
+                                    _dragAnnotOrigPos = pa.Position.ToWpf();
                                     _dragAnnot = pa;
                                     _annotationCanvas.CaptureMouse();
                                     e.Handled = true;
@@ -2660,7 +2660,7 @@ namespace KillerPDF
                     _isDrawing = true;
                     _activeInk = new InkAnnotation { PageIndex = pageIdx, StrokeWidth = _drawWidth };
                     _activeInk.SetColor(_drawColor);
-                    _activeInk.Points.Add(pos);
+                    _activeInk.Points.Add(pos.ToCore());
                     var poly = new Polyline
                     {
                         Stroke = new SolidColorBrush(_drawColor),
@@ -2759,7 +2759,7 @@ namespace KillerPDF
             {
                 double dx = pos.X - _dragAnnotStart.X;
                 double dy = pos.Y - _dragAnnotStart.Y;
-                _dragAnnot.Position = new Point(_dragAnnotOrigPos.X + dx, _dragAnnotOrigPos.Y + dy);
+                _dragAnnot.Position = new PointD(_dragAnnotOrigPos.X + dx, _dragAnnotOrigPos.Y + dy);
                 double w = _dragAnnot.SourceWidth * _dragAnnot.Scale;
                 double h = _dragAnnot.SourceHeight * _dragAnnot.Scale;
                 if (_selectionBorder is not null)
@@ -2800,7 +2800,7 @@ namespace KillerPDF
                     break;
 
                 case EditTool.Draw when _activePreview is Polyline poly && _activeInk is not null:
-                    _activeInk.Points.Add(pos);
+                    _activeInk.Points.Add(pos.ToCore());
                     poly.Points.Add(pos);
                     break;
 
@@ -2949,7 +2949,7 @@ namespace KillerPDF
                         var ha = new HighlightAnnotation
                         {
                             PageIndex = pageIdx,
-                            Bounds = new Rect(Canvas.GetLeft(rect), Canvas.GetTop(rect), rect.Width, rect.Height)
+                            Bounds = new RectD(Canvas.GetLeft(rect), Canvas.GetTop(rect), rect.Width, rect.Height)
                         };
                         ha.SetColor(_highlightColor);
                         AddAnnotation(ha);
@@ -2999,7 +2999,7 @@ namespace KillerPDF
             switch (annot)
             {
                 case HighlightAnnotation ha:
-                    bounds = ha.Bounds;
+                    bounds = ha.Bounds.ToWpf();
                     return bounds.Contains(pos);
 
                 case TextAnnotation ta:
@@ -3027,7 +3027,7 @@ namespace KillerPDF
                     return false;
 
                 case TextEditAnnotation tea:
-                    bounds = tea.OriginalBounds;
+                    bounds = tea.OriginalBounds.ToWpf();
                     return bounds.Contains(pos);
 
                 case SignatureAnnotation sa:
@@ -3605,7 +3605,7 @@ namespace KillerPDF
             if (_annotations.TryGetValue(pageIdx, out var existingPage))
             {
                 var existingEdit = existingPage.OfType<TextEditAnnotation>()
-                    .FirstOrDefault(a => a.OriginalBounds.Contains(canvasPos));
+                    .FirstOrDefault(a => a.OriginalBounds.Contains(canvasPos.ToCore()));
                 if (existingEdit is not null)
                 {
                     var reb = existingEdit.OriginalBounds;
@@ -3894,8 +3894,8 @@ namespace KillerPDF
                 var edit = new TextEditAnnotation
                 {
                     PageIndex = ctx.PageIndex,
-                    OriginalBounds = ctx.CanvasBounds,
-                    Position = ctx.Position,
+                    OriginalBounds = ctx.CanvasBounds.ToCore(),
+                    Position = ctx.Position.ToCore(),
                     NewContent = newText,
                     OriginalContent = ctx.OriginalText,
                     FontSize = ctx.FontSize,
@@ -3993,7 +3993,7 @@ namespace KillerPDF
                 var ta = new TextAnnotation
                 {
                     PageIndex = pageIdx,
-                    Position = new Point(x, y),
+                    Position = new PointD(x, y),
                     Content = content,
                     FontSize = tb.FontSize
                 };
@@ -4187,7 +4187,7 @@ namespace KillerPDF
                             StrokeStartLineCap = PenLineCap.Round,
                             StrokeEndLineCap = PenLineCap.Round
                         };
-                        foreach (var pt in ia.Points) poly.Points.Add(pt);
+                        foreach (var pt in ia.Points) poly.Points.Add(pt.ToWpf());
                         _annotationCanvas.Children.Add(poly);
                         break;
                     case TextEditAnnotation tea:
